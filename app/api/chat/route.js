@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { chatWithAI } from '../../../lib/gemini'
-import { getUserFiles } from '../../../lib/supabase'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -33,6 +32,7 @@ export async function POST(request) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
+      console.error('Auth error:', authError)
       return NextResponse.json(
         { error: 'Unauthorized - Invalid token' },
         { status: 401 }
@@ -48,13 +48,28 @@ export async function POST(request) {
       )
     }
 
-    const files = await getUserFiles(user.id)
+    // Get user's files from database
+    const { data: files, error: filesError } = await supabase
+      .from('files')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
 
+    if (filesError) {
+      console.error('Files error:', filesError)
+      return NextResponse.json(
+        { error: `Failed to fetch files: ${filesError.message}` },
+        { status: 500 }
+      )
+    }
+
+    // Prepare file contents for AI
     const fileContents = files.map(file => ({
       name: file.name,
       content: file.content
     }))
 
+    // Get AI response
     const response = await chatWithAI(message, fileContents)
 
     return NextResponse.json({
