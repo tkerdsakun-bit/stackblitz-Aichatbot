@@ -15,7 +15,7 @@ export async function POST(request) {
     const formData = await request.formData()
     const file = formData.get('file')
 
-    if (!file) {
+    if (!file || !(file instanceof File)) {
       return NextResponse.json(
         { error: 'No file provided' },
         { status: 400 }
@@ -25,9 +25,15 @@ export async function POST(request) {
     const timestamp = Date.now()
     const fileName = `${timestamp}_${file.name}`
 
-    const content = await parseFile(file, file.type)
+    // Convert File to ArrayBuffer, then to Buffer
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
 
-    const uploadData = await uploadFile(file, fileName, user.id)
+    // Parse the buffer instead of the File object
+    const content = await parseFile(buffer, file.type)
+
+    // Upload the buffer instead of the File object
+    const uploadData = await uploadFile(buffer, fileName, user.id)
 
     const fileMetadata = {
       name: file.name,
