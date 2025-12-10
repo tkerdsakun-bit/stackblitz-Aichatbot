@@ -2,7 +2,8 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth } from '../context/AuthContext'
+import { supabase } from '../lib/supabase'
 import React, { useState } from 'react';
 import { Upload, Send, FileText, Loader2, Trash2, Sparkles, Database, LogOut } from 'lucide-react';
 
@@ -35,6 +36,18 @@ export default function AIChatbot() {
     const selectedFiles = Array.from(e.target.files);
     setLoading(true);
 
+    // Get the session token
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      setMessages(prev => [...prev, {
+        role: 'system',
+        content: '❌ Please log in again'
+      }]);
+      setLoading(false);
+      return;
+    }
+
     for (const file of selectedFiles) {
       const formData = new FormData();
       formData.append('file', file);
@@ -42,6 +55,9 @@ export default function AIChatbot() {
       try {
         const response = await fetch('/api/upload', {
           method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
           body: formData,
         });
 
@@ -60,7 +76,7 @@ export default function AIChatbot() {
         console.error('Upload error:', error);
         setMessages(prev => [...prev, {
           role: 'system',
-          content: `❌ Failed to upload: ${file.name}`
+          content: `❌ Failed to upload: ${file.name} - ${error.message}`
         }]);
       }
     }
@@ -76,10 +92,25 @@ export default function AIChatbot() {
     setInput('');
     setLoading(true);
 
+    // Get the session token
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Please log in again.'
+      }]);
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({ message: input }),
       });
 
