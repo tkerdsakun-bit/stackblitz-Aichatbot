@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { parseFile } from '../../../lib/fileParser'
-import { uploadFile, saveFileMetadata } from '../../../lib/supabase'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -33,6 +32,7 @@ export async function POST(request) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
+      console.error('Auth error:', authError)
       return NextResponse.json(
         { error: 'Unauthorized - Invalid token' },
         { status: 401 }
@@ -51,21 +51,48 @@ export async function POST(request) {
 
     const timestamp = Date.now()
     const fileName = `${timestamp}_${file.name}`
+    const filePath = `${user.id}/${fileName}`
 
+    // Parse file content
     const content = await parseFile(file, file.type)
 
-    const uploadData = await uploadFile(file, fileName, user.id)
+    // Upload to Supabase Storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('documents')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      })
 
-    const fileMetadata = {
-      name: file.name,
-      file_path: uploadData.path,
-      file_type: file.type,
-      file_size: file.size,
-      content: content,
-      created_at: new Date().toISOString()
+    if (uploadError) {
+      console.error('Upload error:', uploadError)
+      return NextResponse.json(
+        { error: `Upload failed: ${uploadError.message}` },
+        { status: 500 }
+      )
     }
 
-    const savedFile = await saveFileMetadata(fileMetadata, user.id)
+    // Save metadata to database
+    const { data: savedFile, error: dbError } = await supabase
+      .from('files')
+      .insert([{
+        user_id: user.id,
+        name: file.name,
+        file_path: uploadData.path,
+        file_type: file.type,
+        file_size: file.size,
+        content: content,
+      }])
+      .select()
+      .single()
+
+    if (dbError) {
+      console.error('Database error:', dbError)
+      return NextResponse.json(
+        { error: `Database error: ${dbError.message}` },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({
       success: true,
