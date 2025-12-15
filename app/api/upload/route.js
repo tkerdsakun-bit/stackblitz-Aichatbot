@@ -7,19 +7,15 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 export async function POST(request) {
   try {
-    // Get auth token from header
     const authHeader = request.headers.get('authorization')
-    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json(
-        { error: 'Unauthorized - No token provided' },
+        { error: 'Unauthorized - No token' },
         { status: 401 }
       )
     }
 
     const token = authHeader.replace('Bearer ', '')
-
-    // Create Supabase client with user's token
     const supabase = createClient(supabaseUrl, supabaseKey, {
       global: {
         headers: {
@@ -28,9 +24,7 @@ export async function POST(request) {
       }
     })
 
-    // Get user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-
     if (authError || !user) {
       console.error('Auth error:', authError)
       return NextResponse.json(
@@ -49,14 +43,29 @@ export async function POST(request) {
       )
     }
 
+    console.log('📤 Uploading:', file.name, file.size, 'bytes')
+
+    // สร้างชื่อไฟล์ที่ปลอดภัย (ไม่มีภาษาไทย)
     const timestamp = Date.now()
-    const fileName = `${timestamp}_${file.name}`
-    const filePath = `${user.id}/${fileName}`
+    const randomStr = Math.random().toString(36).substring(2, 8)
+    const extension = file.name.substring(file.name.lastIndexOf('.')) || ''
+    const safeFileName = `${timestamp}_${randomStr}${extension.toLowerCase()}`
+    const filePath = `${user.id}/${safeFileName}`
 
-    // Parse file content
-    const content = await parseFile(file, file.type)
+    console.log('📝 Original name:', file.name)
+    console.log('📝 Safe name:', safeFileName)
 
-    // Upload to Supabase Storage
+    // แปลงไฟล์เป็น Text
+    let content = ''
+    try {
+      content = await parseFile(file, file.type)
+      console.log('✅ Parsed:', content.length, 'characters')
+    } catch (parseError) {
+      console.error('Parse error:', parseError)
+      content = `📄 ไฟล์: ${file.name}\n❌ ไม่สามารถแปลงเนื้อหาได้: ${parseError.message}`
+    }
+
+    // อัปโหลดไป Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('documents')
       .upload(filePath, file, {
@@ -72,16 +81,18 @@ export async function POST(request) {
       )
     }
 
-    // Save metadata to database
+    console.log('✅ Uploaded to storage:', uploadData.path)
+
+    // บันทึกข้อมูลลง Database (เก็บชื่อไทยไว้)
     const { data: savedFile, error: dbError } = await supabase
       .from('files')
       .insert([{
         user_id: user.id,
-        name: file.name,
+        name: file.name, // ← เก็บชื่อไทย
         file_path: uploadData.path,
         file_type: file.type,
         file_size: file.size,
-        content: content,
+        content: content
       }])
       .select()
       .single()
@@ -94,6 +105,8 @@ export async function POST(request) {
       )
     }
 
+    console.log('✅ Saved to database:', savedFile.id)
+
     return NextResponse.json({
       success: true,
       file: {
@@ -104,6 +117,7 @@ export async function POST(request) {
         uploadedAt: new Date(savedFile.created_at).toLocaleString()
       }
     })
+
   } catch (error) {
     console.error('Upload error:', error)
     return NextResponse.json(
