@@ -132,9 +132,33 @@ export default function AIChatbot() {
         }])
 
         try {
-          const timestamp = Date.now()
-          const fileName = `${timestamp}_${file.name}`
-          const filePath = `${user.id}/${fileName}`
+// 🆕 ทำความสะอาดชื่อไฟล์ (เอาภาษาไทยออก)
+const sanitizeFileName = (name) => {
+  // แยก extension
+  const lastDot = name.lastIndexOf('.')
+  const nameWithoutExt = lastDot !== -1 ? name.substring(0, lastDot) : name
+  const extension = lastDot !== -1 ? name.substring(lastDot) : ''
+  
+  // แปลงภาษาไทยเป็น ASCII หรือลบออก
+  const sanitized = nameWithoutExt
+    .normalize('NFD')
+    .replace(/[\u0E00-\u0E7F]/g, '') // ลบอักษรไทย
+    .replace(/[^\w\s-]/g, '') // ลบ special chars
+    .replace(/[\s_]+/g, '_') // เปลี่ยน space เป็น underscore
+    .replace(/^-+|-+$/g, '') // ลบ dash ต้นท้าย
+    .toLowerCase()
+  
+  // ถ้าชื่อว่างเปล่า (ไฟล์ชื่อเป็นภาษาไทยหมด) ให้ใช้ file เป็นชื่อ
+  return (sanitized || 'file') + extension
+}
+
+const timestamp = Date.now()
+const sanitizedName = sanitizeFileName(file.name)
+const fileName = `${timestamp}_${sanitizedName}`
+const filePath = `${user.id}/${fileName}`
+
+console.log('Original:', file.name, '→ Sanitized:', sanitizedName)
+
 
           // อัปโหลดตรงไป Supabase Storage
           const { data: uploadData, error: uploadError } = await supabase.storage
@@ -639,4 +663,5 @@ export default function AIChatbot() {
     </div>
   )
 }
+
 
