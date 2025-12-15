@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import React, { useState } from 'react'
-import { Upload, Send, FileText, Loader2, Trash2, Sparkles, Database, LogOut, Download, X } from 'lucide-react'
+import { Upload, Send, FileText, Loader2, Trash2, Sparkles, Database, LogOut, Download, X, AlertCircle, CheckCircle } from 'lucide-react'
 
 export default function AIChatbot() {
   const { user, loading: authLoading, signOut } = useAuth()
@@ -17,7 +17,20 @@ export default function AIChatbot() {
   const [uploadedFiles, setUploadedFiles] = useState([])
   const [isDragging, setIsDragging] = useState(false)
   const [uploadProgress, setUploadProgress] = useState([])
+  const [notification, setNotification] = useState(null) // Toast notification
   const chatAreaRef = useRef(null)
+  const messagesEndRef = useRef(null)
+
+  // 🆕 Toast Notification
+  const showNotification = (message, type = 'info') => {
+    setNotification({ message, type })
+    setTimeout(() => setNotification(null), 4000)
+  }
+
+  // 🆕 Auto-scroll เมื่อมี Message ใหม่
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   // โหลดไฟล์จาก Database
   const loadUserFiles = async () => {
@@ -45,6 +58,7 @@ export default function AIChatbot() {
       setUploadedFiles(formattedFiles)
     } catch (error) {
       console.error('Error loading files:', error)
+      showNotification('ไม่สามารถโหลดไฟล์ได้', 'error')
     }
   }
 
@@ -65,59 +79,102 @@ export default function AIChatbot() {
     if (!files || files.length === 0) return
 
     const fileArray = Array.from(files)
+    const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
+    const ALLOWED_TYPES = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'text/plain'
+    ]
+
+    // 🆕 ตรวจสอบไฟล์ก่อนอัปโหลด
+    const invalidFiles = fileArray.filter(file => {
+      if (file.size > MAX_FILE_SIZE) {
+        showNotification(`${file.name} ใหญ่เกิน 10 MB`, 'error')
+        return true
+      }
+      if (!ALLOWED_TYPES.includes(file.type) && !file.name.endsWith('.txt')) {
+        showNotification(`${file.name} ไม่รองรับไฟล์ประเภทนี้`, 'error')
+        return true
+      }
+      return false
+    })
+
+    const validFiles = fileArray.filter(f => !invalidFiles.includes(f))
+    if (validFiles.length === 0) return
+
     setLoading(true)
     
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
-        alert('Please login first')
+        showNotification('กรุณาเข้าสู่ระบบก่อน', 'error')
         return
       }
 
+      let successCount = 0
+      let failCount = 0
+
       // อัปโหลดทีละไฟล์
-      for (let i = 0; i < fileArray.length; i++) {
-        const file = fileArray[i]
+      for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i]
         
         setUploadProgress(prev => [...prev, {
           name: file.name,
           progress: 0
         }])
 
-        const formData = new FormData()
-        formData.append('file', file)
+        try {
+          const formData = new FormData()
+          formData.append('file', file)
 
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`
-          },
-          body: formData
-        })
+          const response = await fetch('/api/upload', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`
+            },
+            body: formData
+          })
 
-        if (!response.ok) {
-          const error = await response.json()
-          throw new Error(error.error || 'Upload failed')
+          if (!response.ok) {
+            const error = await response.json()
+            throw new Error(error.error || 'Upload failed')
+          }
+
+          setUploadProgress(prev => prev.map(p => 
+            p.name === file.name ? { ...p, progress: 100 } : p
+          ))
+          successCount++
+
+        } catch (error) {
+          console.error(`Upload error for ${file.name}:`, error)
+          failCount++
+          setUploadProgress(prev => prev.filter(p => p.name !== file.name))
         }
-
-        setUploadProgress(prev => prev.map(p => 
-          p.name === file.name ? { ...p, progress: 100 } : p
-        ))
       }
 
       await loadUserFiles()
       
-      // แจ้งเตือนสำเร็จ
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: `✅ อัปโหลดสำเร็จ ${fileArray.length} ไฟล์: ${fileArray.map(f => f.name).join(', ')}`
-      }])
+      // แจ้งผลการอัปโหลด
+      if (successCount > 0) {
+        showNotification(`✅ อัปโหลดสำเร็จ ${successCount} ไฟล์`, 'success')
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `✅ อัปโหลดสำเร็จ ${successCount} ไฟล์${failCount > 0 ? ` (ล้มเหลว ${failCount} ไฟล์)` : ''}`
+        }])
+      }
+      
+      if (failCount > 0 && successCount === 0) {
+        showNotification(`❌ อัปโหลดล้มเหลวทั้งหมด`, 'error')
+      }
 
     } catch (error) {
       console.error('Upload error:', error)
-      alert('Upload failed: ' + error.message)
+      showNotification('อัปโหลดล้มเหลว: ' + error.message, 'error')
     } finally {
       setLoading(false)
-      setUploadProgress([])
+      setTimeout(() => setUploadProgress([]), 1000)
     }
   }
 
@@ -131,7 +188,10 @@ export default function AIChatbot() {
   const handleDragLeave = (e) => {
     e.preventDefault()
     e.stopPropagation()
-    setIsDragging(false)
+    // ตรวจสอบว่าออกจากพื้นที่จริงๆ
+    if (e.currentTarget === e.target) {
+      setIsDragging(false)
+    }
   }
 
   const handleDrop = (e) => {
@@ -140,12 +200,19 @@ export default function AIChatbot() {
     setIsDragging(false)
 
     const files = e.dataTransfer.files
-    uploadFiles(files)
+    if (files.length > 0) {
+      uploadFiles(files)
+    }
   }
 
-  // 🆕 Paste (Ctrl+V)
+  // 🆕 Paste (Ctrl+V) - ปรับปรุงให้ไม่ conflict กับ input
   useEffect(() => {
     const handlePaste = (e) => {
+      // ไม่ทำงานถ้ากำลังพิมพ์ใน input
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        return
+      }
+
       const items = e.clipboardData?.items
       if (!items) return
 
@@ -174,8 +241,6 @@ export default function AIChatbot() {
 
   const handleDownloadFile = async (file) => {
     try {
-      setLoading(true)
-      
       const { data, error } = await supabase.storage
         .from('documents')
         .createSignedUrl(file.file_path, 60)
@@ -187,16 +252,16 @@ export default function AIChatbot() {
       link.download = file.name
       link.click()
       
+      showNotification(`กำลังดาวน์โหลด ${file.name}`, 'success')
+      
     } catch (error) {
       console.error('Download error:', error)
-      alert('ดาวน์โหลดไม่สำเร็จ: ' + error.message)
-    } finally {
-      setLoading(false)
+      showNotification('ดาวน์โหลดไม่สำเร็จ', 'error')
     }
   }
 
   const handleDeleteFile = async (file) => {
-    if (!confirm(`Delete ${file.name}?`)) return
+    if (!confirm(`ต้องการลบ ${file.name} ใช่หรือไม่?`)) return
 
     try {
       setLoading(true)
@@ -216,10 +281,11 @@ export default function AIChatbot() {
       if (dbError) throw dbError
 
       await loadUserFiles()
+      showNotification(`ลบ ${file.name} สำเร็จ`, 'success')
 
     } catch (error) {
       console.error('Delete error:', error)
-      alert('Delete failed: ' + error.message)
+      showNotification('ลบไฟล์ไม่สำเร็จ', 'error')
     } finally {
       setLoading(false)
     }
@@ -264,6 +330,7 @@ export default function AIChatbot() {
         role: 'assistant', 
         content: 'ขออภัย เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง' 
       }])
+      showNotification('ส่งข้อความไม่สำเร็จ', 'error')
     } finally {
       setLoading(false)
     }
@@ -279,6 +346,22 @@ export default function AIChatbot() {
 
   return (
     <div className="flex h-screen bg-black text-white">
+      {/* 🆕 Toast Notification */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-6 py-4 rounded-lg shadow-2xl border animate-fade-in ${
+          notification.type === 'success' ? 'bg-green-500/10 border-green-500/50 text-green-400' :
+          notification.type === 'error' ? 'bg-red-500/10 border-red-500/50 text-red-400' :
+          'bg-blue-500/10 border-blue-500/50 text-blue-400'
+        }`}>
+          {notification.type === 'success' && <CheckCircle className="w-5 h-5" />}
+          {notification.type === 'error' && <AlertCircle className="w-5 h-5" />}
+          <span className="font-medium">{notification.message}</span>
+          <button onClick={() => setNotification(null)} className="ml-2">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Left Sidebar */}
       <div className="w-80 bg-black border-r border-gray-800 flex flex-col">
         <div className="p-4 border-b border-gray-800">
@@ -303,6 +386,7 @@ export default function AIChatbot() {
               multiple
             />
           </label>
+          <p className="text-xs text-gray-600 mt-2 text-center">Max 10 MB per file</p>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
@@ -327,6 +411,7 @@ export default function AIChatbot() {
                     onClick={() => handleDownloadFile(file)}
                     className="p-2 text-blue-400 hover:bg-gray-800 rounded-lg transition-colors"
                     title="ดาวน์โหลด"
+                    disabled={loading}
                   >
                     <Download className="w-5 h-5" />
                   </button>
@@ -335,6 +420,7 @@ export default function AIChatbot() {
                     onClick={() => handleDeleteFile(file)}
                     className="p-2 text-red-500 hover:bg-gray-800 rounded-lg transition-colors"
                     title="ลบ"
+                    disabled={loading}
                   >
                     <Trash2 className="w-5 h-5" />
                   </button>
@@ -370,33 +456,33 @@ export default function AIChatbot() {
         onDrop={handleDrop}
         ref={chatAreaRef}
       >
-        {/* 🆕 Drag & Drop Overlay */}
+        {/* Drag & Drop Overlay */}
         {isDragging && (
-          <div className="absolute inset-0 bg-white/10 backdrop-blur-sm z-50 flex items-center justify-center border-4 border-dashed border-white/50">
+          <div className="absolute inset-0 bg-white/10 backdrop-blur-sm z-50 flex items-center justify-center border-4 border-dashed border-white/50 rounded-lg m-2">
             <div className="text-center">
-              <Upload className="w-16 h-16 text-white mx-auto mb-4" />
+              <Upload className="w-16 h-16 text-white mx-auto mb-4 animate-bounce" />
               <p className="text-2xl font-bold text-white">Drop files here</p>
-              <p className="text-gray-300 mt-2">PDF, Word, Excel, Text</p>
+              <p className="text-gray-300 mt-2">PDF, Word, Excel, Text (Max 10 MB)</p>
             </div>
           </div>
         )}
 
-        {/* 🆕 Upload Progress */}
+        {/* Upload Progress */}
         {uploadProgress.length > 0 && (
-          <div className="absolute top-4 right-4 bg-gray-900 border border-gray-800 rounded-lg p-4 shadow-2xl z-40 max-w-sm">
+          <div className="absolute top-4 right-4 bg-gray-900 border border-gray-800 rounded-lg p-4 shadow-2xl z-40 min-w-[300px]">
             <div className="flex items-center justify-between mb-3">
               <span className="font-semibold text-white">Uploading...</span>
               <Loader2 className="w-4 h-4 animate-spin text-white" />
             </div>
             {uploadProgress.map((file, i) => (
-              <div key={i} className="mb-2">
+              <div key={i} className="mb-2 last:mb-0">
                 <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-300 truncate">{file.name}</span>
+                  <span className="text-gray-300 truncate max-w-[200px]">{file.name}</span>
                   <span className="text-gray-400">{file.progress}%</span>
                 </div>
                 <div className="w-full bg-gray-800 rounded-full h-2">
                   <div 
-                    className="bg-white h-2 rounded-full transition-all"
+                    className="bg-white h-2 rounded-full transition-all duration-300"
                     style={{ width: `${file.progress}%` }}
                   ></div>
                 </div>
@@ -432,13 +518,13 @@ export default function AIChatbot() {
                 Upload, drag & drop, or paste files. Ask questions and get instant insights.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
-                <div className="p-4 bg-gray-900 rounded-lg border border-gray-800">
+                <div className="p-4 bg-gray-900 rounded-lg border border-gray-800 hover:border-gray-700 transition-colors">
                   <p className="text-sm text-gray-400">💡 Drag & drop files anywhere</p>
                 </div>
-                <div className="p-4 bg-gray-900 rounded-lg border border-gray-800">
+                <div className="p-4 bg-gray-900 rounded-lg border border-gray-800 hover:border-gray-700 transition-colors">
                   <p className="text-sm text-gray-400">📋 Paste files with Ctrl+V</p>
                 </div>
-                <div className="p-4 bg-gray-900 rounded-lg border border-gray-800">
+                <div className="p-4 bg-gray-900 rounded-lg border border-gray-800 hover:border-gray-700 transition-colors">
                   <p className="text-sm text-gray-400">📤 Upload multiple files at once</p>
                 </div>
               </div>
@@ -473,6 +559,7 @@ export default function AIChatbot() {
                   )}
                 </div>
               ))}
+              <div ref={messagesEndRef} />
             </div>
           )}
         </div>
