@@ -8,7 +8,7 @@
   box-sizing: border-box;
 }
 
-body {
+html, body {
   overflow: hidden;
   background: #000000;
   color: #ffffff;
@@ -56,4 +56,42 @@ body {
 
 .animate-fade-in {
   animation: fade-in 0.3s ease-out;
+}
+
+/* Custom viewport height for mobile */
+:root {
+  --vh: 1vh;
+}
+
+/* Mobile fixes */
+@media screen and (max-width: 1024px) {
+  html, body, #__next {
+    height: 100vh;
+    height: calc(var(--vh, 1vh) * 100);
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+  }
+
+  /* Prevent input zoom on iOS */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Safe area for mobile devices (notch/home bar) */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-bottom {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
+  }
+}
+
+/* Prevent overscroll bounce on mobile */
+body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
 }
