@@ -2,8 +2,8 @@
 
 import { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '../contexts/AuthContext'
-import { supabase } from '../lib/supabase'
+import { useAuth } from './contexts/AuthContext'
+import { supabase } from './lib/supabase'
 import React, { useState } from 'react'
 import { Upload, Send, FileText, Loader2, Trash2, Sparkles, Database, LogOut, Download, X, AlertCircle, CheckCircle, Menu } from 'lucide-react'
 
@@ -18,19 +18,47 @@ export default function AIChatbot() {
   const [isDragging, setIsDragging] = useState(false)
   const [uploadProgress, setUploadProgress] = useState([])
   const [notification, setNotification] = useState(null)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false) // 🆕 Mobile sidebar toggle
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const chatAreaRef = useRef(null)
   const messagesEndRef = useRef(null)
 
+  // Toast Notification
   const showNotification = (message, type = 'info') => {
     setNotification({ message, type })
     setTimeout(() => setNotification(null), 4000)
   }
 
+  // Auto-scroll เมื่อมี Message ใหม่
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Fix viewport height on mobile
+  useEffect(() => {
+    const setVH = () => {
+      const vh = window.innerHeight * 0.01
+      document.documentElement.style.setProperty('--vh', `${vh}px`)
+    }
+    
+    setVH()
+    window.addEventListener('resize', setVH)
+    window.addEventListener('orientationchange', setVH)
+    
+    // Listen for visual viewport changes (keyboard open/close)
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', setVH)
+    }
+    
+    return () => {
+      window.removeEventListener('resize', setVH)
+      window.removeEventListener('orientationchange', setVH)
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', setVH)
+      }
+    }
+  }, [])
+
+  // โหลดไฟล์จาก Database
   const loadUserFiles = async () => {
     if (!user) return
     
@@ -72,11 +100,12 @@ export default function AIChatbot() {
     }
   }, [user, authLoading, router])
 
+  // อัปโหลดไฟล์ (Direct Upload)
   const uploadFiles = async (files) => {
     if (!files || files.length === 0) return
 
     const fileArray = Array.from(files)
-    const MAX_FILE_SIZE = 50 * 1024 * 1024
+    const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
     
     setLoading(true)
     
@@ -107,6 +136,7 @@ export default function AIChatbot() {
           const fileName = `${timestamp}_${file.name}`
           const filePath = `${user.id}/${fileName}`
 
+          // อัปโหลดตรงไป Supabase Storage
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('documents')
             .upload(filePath, file, {
@@ -122,6 +152,7 @@ export default function AIChatbot() {
 
           const content = `📄 ไฟล์: ${file.name}\n📊 ขนาด: ${(file.size / 1024).toFixed(2)} KB\n📅 อัปโหลด: ${new Date().toLocaleString('th-TH')}`
 
+          // บันทึกข้อมูลลง Database
           const { error: dbError } = await supabase
             .from('files')
             .insert([{
@@ -151,7 +182,7 @@ export default function AIChatbot() {
       if (successCount > 0) {
         await loadUserFiles()
         showNotification(`✅ อัปโหลดสำเร็จ ${successCount} ไฟล์`, 'success')
-        setIsSidebarOpen(false) // 🆕 ปิด sidebar หลังอัปโหลดบน mobile
+        setIsSidebarOpen(false)
       }
 
     } catch (error) {
@@ -163,6 +194,7 @@ export default function AIChatbot() {
     }
   }
 
+  // Drag & Drop
   const handleDragOver = (e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -188,6 +220,7 @@ export default function AIChatbot() {
     }
   }
 
+  // Paste (Ctrl+V)
   useEffect(() => {
     const handlePaste = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
@@ -329,21 +362,21 @@ export default function AIChatbot() {
     <div className="flex h-screen bg-black text-white overflow-hidden">
       {/* Toast Notification */}
       {notification && (
-        <div className={`fixed top-4 right-4 z-[60] flex items-center gap-3 px-4 py-3 rounded-lg shadow-2xl border animate-fade-in max-w-[90vw] ${
+        <div className={`fixed top-4 left-4 right-4 mx-auto z-[60] flex items-center gap-3 px-4 py-3 rounded-lg shadow-2xl border animate-fade-in max-w-md ${
           notification.type === 'success' ? 'bg-green-500/10 border-green-500/50 text-green-400' :
           notification.type === 'error' ? 'bg-red-500/10 border-red-500/50 text-red-400' :
           'bg-blue-500/10 border-blue-500/50 text-blue-400'
         }`}>
           {notification.type === 'success' && <CheckCircle className="w-5 h-5 flex-shrink-0" />}
           {notification.type === 'error' && <AlertCircle className="w-5 h-5 flex-shrink-0" />}
-          <span className="font-medium text-sm">{notification.message}</span>
-          <button onClick={() => setNotification(null)} className="ml-2">
+          <span className="font-medium text-sm flex-1">{notification.message}</span>
+          <button onClick={() => setNotification(null)} className="ml-2 flex-shrink-0">
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* 🆕 Mobile Overlay */}
+      {/* Mobile Overlay */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
@@ -351,17 +384,17 @@ export default function AIChatbot() {
         />
       )}
 
-      {/* Left Sidebar - 🆕 Mobile Responsive */}
+      {/* Left Sidebar - Mobile Responsive */}
       <div className={`
         fixed lg:relative inset-y-0 left-0 z-50
-        w-80 bg-black border-r border-gray-800 flex flex-col
+        w-[85vw] sm:w-80 max-w-sm bg-black border-r border-gray-800 flex flex-col
         transform transition-transform duration-300 ease-in-out
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
-        {/* 🆕 Mobile Close Button */}
+        {/* Mobile Close Button */}
         <button
           onClick={() => setIsSidebarOpen(false)}
-          className="lg:hidden absolute top-4 right-4 p-2 text-gray-400 hover:text-white"
+          className="lg:hidden absolute top-4 right-4 p-2 text-gray-400 hover:text-white z-10"
         >
           <X className="w-6 h-6" />
         </button>
@@ -388,7 +421,7 @@ export default function AIChatbot() {
               multiple
             />
           </label>
-          <p className="text-xs text-gray-600 mt-2 text-center">Max 50 MB</p>
+          <p className="text-xs text-gray-600 mt-2 text-center">Max 50 MB per file</p>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
@@ -410,7 +443,7 @@ export default function AIChatbot() {
                   
                   <button
                     onClick={() => handleDownloadFile(file)}
-                    className="p-2 text-blue-400 hover:bg-gray-800 rounded-lg transition-colors"
+                    className="p-2 text-blue-400 hover:bg-gray-800 rounded-lg transition-colors flex-shrink-0"
                     disabled={loading}
                   >
                     <Download className="w-4 h-4" />
@@ -418,7 +451,7 @@ export default function AIChatbot() {
                   
                   <button
                     onClick={() => handleDeleteFile(file)}
-                    className="p-2 text-red-500 hover:bg-gray-800 rounded-lg transition-colors"
+                    className="p-2 text-red-500 hover:bg-gray-800 rounded-lg transition-colors flex-shrink-0"
                     disabled={loading}
                   >
                     <Trash2 className="w-4 h-4" />
@@ -431,15 +464,15 @@ export default function AIChatbot() {
 
         <div className="p-4 border-t border-gray-800">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-8 h-8 bg-white text-black rounded-full flex items-center justify-center font-bold flex-shrink-0">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="w-8 h-8 bg-white text-black rounded-full flex items-center justify-center font-bold flex-shrink-0 text-sm">
                 {user?.email?.[0].toUpperCase()}
               </div>
               <span className="text-sm text-gray-400 truncate">{user?.email}</span>
             </div>
             <button
               onClick={signOut}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors flex-shrink-0"
+              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors flex-shrink-0 ml-2"
             >
               <LogOut className="w-5 h-5" />
             </button>
@@ -449,24 +482,26 @@ export default function AIChatbot() {
 
       {/* Main Chat Area */}
       <div 
-        className="flex-1 flex flex-col bg-black relative w-full"
+        className="flex-1 flex flex-col bg-black relative w-full min-h-0"
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         ref={chatAreaRef}
       >
+        {/* Drag & Drop Overlay */}
         {isDragging && (
           <div className="absolute inset-0 bg-white/10 backdrop-blur-sm z-50 flex items-center justify-center border-4 border-dashed border-white/50 rounded-lg m-2">
             <div className="text-center px-4">
               <Upload className="w-16 h-16 text-white mx-auto mb-4 animate-bounce" />
-              <p className="text-2xl font-bold text-white">Drop files here</p>
-              <p className="text-gray-300 mt-2 text-sm">PDF, Word, Excel, Text</p>
+              <p className="text-xl lg:text-2xl font-bold text-white">Drop files here</p>
+              <p className="text-gray-300 mt-2 text-sm">PDF, Word, Excel, Text (Max 50 MB)</p>
             </div>
           </div>
         )}
 
+        {/* Upload Progress */}
         {uploadProgress.length > 0 && (
-          <div className="absolute top-4 right-4 bg-gray-900 border border-gray-800 rounded-lg p-4 shadow-2xl z-40 min-w-[280px] max-w-[90vw]">
+          <div className="absolute top-4 right-4 bg-gray-900 border border-gray-800 rounded-lg p-4 shadow-2xl z-40 min-w-[280px] max-w-[calc(100vw-2rem)]">
             <div className="flex items-center justify-between mb-3">
               <span className="font-semibold text-white text-sm">Uploading...</span>
               <Loader2 className="w-4 h-4 animate-spin text-white" />
@@ -489,12 +524,12 @@ export default function AIChatbot() {
         )}
 
         {/* Header */}
-        <div className="bg-black border-b border-gray-800 px-4 lg:px-6 py-4">
+        <div className="bg-black border-b border-gray-800 px-4 lg:px-6 py-4 flex-shrink-0">
           <div className="flex items-center gap-3">
-            {/* 🆕 Mobile Menu Button */}
+            {/* Mobile Menu Button */}
             <button
               onClick={() => setIsSidebarOpen(true)}
-              className="lg:hidden p-2 hover:bg-gray-800 rounded-lg transition-colors"
+              className="lg:hidden p-2 hover:bg-gray-800 rounded-lg transition-colors flex-shrink-0"
             >
               <Menu className="w-6 h-6 text-white" />
             </button>
@@ -502,35 +537,35 @@ export default function AIChatbot() {
             <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center flex-shrink-0">
               <Sparkles className="w-6 h-6 text-black" />
             </div>
-            <div className="min-w-0">
-              <h1 className="text-lg lg:text-xl font-bold text-white">AI Assistant</h1>
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <h1 className="text-lg lg:text-xl font-bold text-white truncate">AI Assistant</h1>
               <p className="text-xs lg:text-sm text-gray-500 truncate">Ask anything about your files</p>
             </div>
           </div>
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 lg:p-6">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 lg:p-6">
           {messages.length === 0 ? (
-            <div className="max-w-2xl mx-auto text-center py-8 lg:py-12">
+            <div className="max-w-2xl mx-auto text-center py-8 lg:py-12 px-4">
               <div className="w-16 h-16 lg:w-20 lg:h-20 bg-gray-900 rounded-2xl flex items-center justify-center mx-auto mb-4 lg:mb-6 border border-gray-800">
                 <Sparkles className="w-8 h-8 lg:w-10 lg:h-10 text-white" />
               </div>
               <h2 className="text-xl lg:text-2xl font-bold text-white mb-2 lg:mb-3">
                 AI Document Assistant
               </h2>
-              <p className="text-gray-500 mb-6 lg:mb-8 text-sm lg:text-base px-4">
+              <p className="text-gray-500 mb-6 lg:mb-8 text-sm lg:text-base">
                 Upload files and get instant insights
               </p>
-              <div className="grid grid-cols-1 gap-3 lg:gap-4 text-left px-4">
-                <div className="p-3 lg:p-4 bg-gray-900 rounded-lg border border-gray-800">
-                  <p className="text-xs lg:text-sm text-gray-400">💡 Drag & drop files</p>
+              <div className="grid grid-cols-1 gap-3 text-left">
+                <div className="p-3 lg:p-4 bg-gray-900 rounded-lg border border-gray-800 hover:border-gray-700 transition-colors">
+                  <p className="text-xs lg:text-sm text-gray-400">💡 Drag & drop files anywhere</p>
                 </div>
-                <div className="p-3 lg:p-4 bg-gray-900 rounded-lg border border-gray-800">
-                  <p className="text-xs lg:text-sm text-gray-400">📋 Paste with Ctrl+V</p>
+                <div className="p-3 lg:p-4 bg-gray-900 rounded-lg border border-gray-800 hover:border-gray-700 transition-colors">
+                  <p className="text-xs lg:text-sm text-gray-400">📋 Paste files with Ctrl+V</p>
                 </div>
-                <div className="p-3 lg:p-4 bg-gray-900 rounded-lg border border-gray-800">
-                  <p className="text-xs lg:text-sm text-gray-400">📤 Upload multiple files</p>
+                <div className="p-3 lg:p-4 bg-gray-900 rounded-lg border border-gray-800 hover:border-gray-700 transition-colors">
+                  <p className="text-xs lg:text-sm text-gray-400">📤 Upload multiple files at once</p>
                 </div>
               </div>
             </div>
@@ -549,16 +584,16 @@ export default function AIChatbot() {
                     </div>
                   )}
                   <div
-                    className={`max-w-[85%] lg:max-w-[80%] rounded-2xl px-4 py-3 lg:px-6 lg:py-4 ${
+                    className={`max-w-[90%] sm:max-w-[85%] lg:max-w-[80%] rounded-2xl px-4 py-3 lg:px-6 lg:py-4 ${
                       msg.role === 'user'
                         ? 'bg-white text-black'
                         : 'bg-gray-900 text-white border border-gray-800'
                     }`}
                   >
-                    <p className="whitespace-pre-wrap leading-relaxed text-sm lg:text-base">{msg.content}</p>
+                    <p className="whitespace-pre-wrap leading-relaxed text-sm lg:text-base break-words">{msg.content}</p>
                   </div>
                   {msg.role === 'user' && (
-                    <div className="w-7 h-7 lg:w-8 lg:h-8 bg-white text-black rounded-lg flex items-center justify-center font-bold flex-shrink-0 text-sm">
+                    <div className="w-7 h-7 lg:w-8 lg:h-8 bg-white text-black rounded-lg flex items-center justify-center font-bold flex-shrink-0 text-xs lg:text-sm">
                       {user?.email?.[0].toUpperCase()}
                     </div>
                   )}
@@ -569,27 +604,32 @@ export default function AIChatbot() {
           )}
         </div>
 
-        {/* Input Area */}
-        <div className="border-t border-gray-800 bg-black p-3 lg:p-4">
+        {/* Input Area - Fixed at bottom */}
+        <div className="flex-shrink-0 border-t border-gray-800 bg-black px-3 py-3 lg:px-4 lg:py-4 safe-bottom">
           <div className="max-w-3xl mx-auto">
-            <form onSubmit={handleSendMessage} className="flex gap-2 lg:gap-3">
+            <form onSubmit={handleSendMessage} className="flex gap-2">
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask about your documents..."
-                className="flex-1 px-4 lg:px-6 py-3 lg:py-4 bg-gray-900 text-white border border-gray-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-white placeholder-gray-600 text-sm lg:text-base"
+                className="flex-1 px-4 py-3.5 bg-gray-900 text-white border border-gray-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-white placeholder-gray-600"
+                style={{ fontSize: '16px' }}
                 disabled={loading}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck="false"
               />
               <button
                 type="submit"
                 disabled={loading || !input.trim()}
-                className="px-4 lg:px-6 py-3 lg:py-4 bg-white text-black rounded-xl hover:bg-gray-200 disabled:bg-gray-800 disabled:text-gray-600 transition-all flex items-center gap-2 font-medium"
+                className="w-12 h-12 lg:w-14 lg:h-14 bg-white text-black rounded-xl hover:bg-gray-200 disabled:bg-gray-800 disabled:text-gray-600 transition-all flex items-center justify-center flex-shrink-0"
               >
                 {loading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="w-5 h-5 lg:w-6 lg:h-6 animate-spin" />
                 ) : (
-                  <Send className="w-5 h-5" />
+                  <Send className="w-5 h-5 lg:w-6 lg:h-6" />
                 )}
               </button>
             </form>
