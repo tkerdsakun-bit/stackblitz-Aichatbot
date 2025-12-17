@@ -25,7 +25,7 @@ export default function AIChatbot() {
   const [useOwnKey, setUseOwnKey] = useState(false)
   const [showApiKeyModal, setShowApiKeyModal] = useState(false)
   const [apiKeyInputTemp, setApiKeyInputTemp] = useState('')
-  const [selectedProvider, setSelectedProvider] = useState('huggingface')
+  const [selectedProvider, setSelectedProvider] = useState('perplexity')
 
   const chatAreaRef = useRef(null)
   const messagesEndRef = useRef(null)
@@ -816,3 +816,4 @@ export default function AIChatbot() {
     </div>
   )
 }
+
