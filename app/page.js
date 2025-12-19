@@ -135,32 +135,37 @@ export default function AIChatbot() {
 
   const connectDrive = () => {
     setLoadingDrive(true)
-    window.location.href = '/api/auth/google/drive'
+   window.location.href = '/api/google/drive'
   }
 
   const loadDrive = async () => {
-    setLoadingDrive(true)
-    try {
-      const res = await fetch('/api/gdrive/files')
-      if (!res.ok) {
-        if (res.status === 401) {
-          setDriveConnected(false)
-          localStorage.removeItem('drive_' + user.id)
-          notify('Reconnect Drive', 'error')
-          return
-        }
-        throw new Error('Failed')
+  setLoadingDrive(true)
+  try {
+    const { data: { session } } = await supabase.auth.getSession()  // ✅ เพิ่มบรรทัดนี้
+    const res = await fetch('/api/gdrive/files', {
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`  // ✅ เพิ่มบรรทัดนี้
       }
-      const data = await res.json()
-      setDriveFiles(data.files || [])
-      setDriveConnected(true)
-      localStorage.setItem('drive_' + user.id, 'connected')
-    } catch (error) {
-      notify('Failed to load', 'error')
-    } finally {
-      setLoadingDrive(false)
+    })
+    if (!res.ok) {
+      if (res.status === 401) {
+        setDriveConnected(false)
+        localStorage.removeItem('drive_' + user.id)
+        notify('Reconnect Drive', 'error')
+        return
+      }
+      throw new Error('Failed')
     }
+    const data = await res.json()
+    setDriveFiles(data.files || [])
+    setDriveConnected(true)
+    localStorage.setItem('drive_' + user.id, 'connected')
+  } catch (error) {
+    notify('Failed to load', 'error')
+  } finally {
+    setLoadingDrive(false)
   }
+}
 
   const toggleDrive = (fileId, fileName) => {
     setSelectedDriveFiles(prev => {
@@ -334,7 +339,7 @@ export default function AIChatbot() {
   if (authLoading || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-black">
-        <Loader2 className="w-8 h-8 text-cyan-400 animate-spin neon-glow" />
+        <Loader2 className="w-8 h-8 text-white animate-spin neon-glow" />
       </div>
     )
   }
@@ -363,7 +368,7 @@ export default function AIChatbot() {
       {isDragging && (
         <div className="fixed inset-0 bg-black/90 z-40 flex items-center justify-center">
           <div className="neon-box p-8 rounded-2xl">
-            <Upload className="w-16 h-16 mx-auto mb-3 text-cyan-400 neon-glow" />
+            <Upload className="w-16 h-16 mx-auto mb-3 text-white neon-glow" />
             <p className="text-xl font-bold neon-text">Drop Files</p>
           </div>
         </div>
@@ -449,7 +454,7 @@ export default function AIChatbot() {
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <div className="w-24 h-24 neon-circle mx-auto mb-4 flex items-center justify-center">
-                <FileText className="w-12 h-12 text-cyan-400" />
+                <FileText className="w-12 h-12 text-white" />
               </div>
               <h3 className="text-xl font-bold mb-2 neon-text">Start Chatting</h3>
               <p className="text-sm text-gray-600 mb-3">Upload files or connect Drive</p>
