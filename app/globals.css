@@ -14,26 +14,196 @@ html, body {
   color: #ffffff;
 }
 
-/* Custom scrollbar - Dark Theme */
+/* ============================================
+   NEON THEME - NEW
+   ============================================ */
+
+:root {
+  --neon-cyan: #00ffff;
+  --neon-blue: #0066ff;
+  --vh: 1vh;
+}
+
+/* Neon Glow Effect */
+.neon-glow {
+  filter: drop-shadow(0 0 8px var(--neon-cyan)) drop-shadow(0 0 15px var(--neon-cyan));
+}
+
+.neon-text {
+  color: var(--neon-cyan);
+  text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan), 0 0 30px var(--neon-cyan);
+}
+
+.neon-border {
+  border: 2px solid var(--neon-cyan);
+  box-shadow: 
+    0 0 10px var(--neon-cyan),
+    inset 0 0 10px var(--neon-cyan);
+}
+
+.neon-box {
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
+  transition: all 0.3s;
+}
+
+.neon-box:hover {
+  border-color: rgba(0, 255, 255, 0.6);
+  box-shadow: 0 0 25px rgba(0, 255, 255, 0.2);
+}
+
+.neon-box.active {
+  border-color: var(--neon-cyan);
+  background: rgba(0, 255, 255, 0.05);
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+}
+
+.neon-circle {
+  border: 3px solid var(--neon-cyan);
+  border-radius: 50%;
+  box-shadow: 
+    0 0 20px var(--neon-cyan),
+    inset 0 0 20px var(--neon-cyan);
+  animation: pulse-neon 2s infinite;
+}
+
+@keyframes pulse-neon {
+  0%, 100% { 
+    box-shadow: 
+      0 0 20px var(--neon-cyan),
+      inset 0 0 20px var(--neon-cyan);
+  }
+  50% { 
+    box-shadow: 
+      0 0 30px var(--neon-cyan),
+      inset 0 0 30px var(--neon-cyan);
+  }
+}
+
+.neon-panel {
+  background: rgba(0, 0, 0, 0.95);
+  border: 2px solid rgba(0, 255, 255, 0.3);
+  box-shadow: 0 0 30px rgba(0, 255, 255, 0.2);
+}
+
+/* Neon Buttons */
+.neon-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  transition: all 0.3s;
+}
+
+.neon-btn:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+  color: var(--neon-cyan);
+}
+
+.neon-btn.active {
+  border-color: var(--neon-cyan);
+  background: rgba(0, 255, 255, 0.1);
+  color: var(--neon-cyan);
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+}
+
+.neon-btn-primary {
+  background: var(--neon-cyan);
+  color: #000;
+  border: none;
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+  transition: all 0.3s;
+}
+
+.neon-btn-primary:hover:not(:disabled) {
+  box-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
+  transform: translateY(-2px);
+}
+
+.neon-btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Neon Inputs */
+.neon-input {
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  transition: all 0.3s;
+}
+
+.neon-input:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+}
+
+.neon-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.neon-select {
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  transition: all 0.3s;
+}
+
+.neon-select:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+}
+
+.neon-select option {
+  background: #000;
+  color: white;
+}
+
+/* ============================================
+   SCROLLBAR - NEON THEMED
+   ============================================ */
+
+/* Custom scrollbar - Neon Theme */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: rgba(0, 0, 0, 0.5);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #333333;
+  background: rgba(0, 255, 255, 0.3);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #444444;
+  background: rgba(0, 255, 255, 0.5);
 }
 
-/* Animations */
+.custom-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scroll::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 255, 0.5);
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
 @keyframes pulse {
   0%, 100% {
     opacity: 1;
@@ -54,14 +224,28 @@ html, body {
   }
 }
 
+@keyframes slide-in {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 .animate-fade-in {
   animation: fade-in 0.3s ease-out;
 }
 
-/* Custom viewport height for mobile */
-:root {
-  --vh: 1vh;
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
 }
+
+/* ============================================
+   MOBILE OPTIMIZATIONS
+   ============================================ */
 
 /* Mobile fixes */
 @media screen and (max-width: 1024px) {
