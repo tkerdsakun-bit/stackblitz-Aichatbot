@@ -15,15 +15,10 @@ html, body {
 }
 
 /* ============================================
-   DUAL THEME: NEON & BLACK & WHITE
+   BLACK & WHITE NEON THEME
    ============================================ */
 
 :root {
-  /* Neon Colors */
-  --neon-cyan: #00ffff;
-  --neon-blue: #0066ff;
-  
-  /* B&W Colors */
   --primary-white: #ffffff;
   --primary-black: #000000;
   --gray-dark: #1a1a1a;
@@ -32,70 +27,66 @@ html, body {
   --vh: 1vh;
 }
 
-/* ============================================
-   NEON THEME
-   ============================================ */
-
-/* Neon Glow Effect */
+/* White Glow Effects */
 .neon-glow {
-  filter: drop-shadow(0 0 8px var(--neon-cyan)) drop-shadow(0 0 15px var(--neon-cyan));
+  filter: drop-shadow(0 0 8px var(--primary-white)) drop-shadow(0 0 15px var(--primary-white));
 }
 
 .neon-text {
-  color: var(--neon-cyan);
-  text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan), 0 0 30px var(--neon-cyan);
+  color: var(--primary-white);
+  text-shadow: 0 0 10px var(--primary-white), 0 0 20px var(--primary-white), 0 0 30px var(--primary-white);
 }
 
 .neon-border {
-  border: 2px solid var(--neon-cyan);
+  border: 2px solid var(--primary-white);
   box-shadow: 
-    0 0 10px var(--neon-cyan),
-    inset 0 0 10px var(--neon-cyan);
+    0 0 10px var(--primary-white),
+    inset 0 0 10px var(--primary-white);
 }
 
 .neon-box {
-  border: 1px solid rgba(0, 255, 255, 0.3);
-  box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
   transition: all 0.3s;
 }
 
 .neon-box:hover {
-  border-color: rgba(0, 255, 255, 0.6);
-  box-shadow: 0 0 25px rgba(0, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 25px rgba(255, 255, 255, 0.3);
 }
 
 .neon-box.active {
-  border-color: var(--neon-cyan);
-  background: rgba(0, 255, 255, 0.05);
-  box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+  border-color: var(--primary-white);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.4);
 }
 
 .neon-circle {
-  border: 3px solid var(--neon-cyan);
+  border: 3px solid var(--primary-white);
   border-radius: 50%;
   box-shadow: 
-    0 0 20px var(--neon-cyan),
-    inset 0 0 20px var(--neon-cyan);
+    0 0 20px var(--primary-white),
+    inset 0 0 20px var(--primary-white);
   animation: pulse-neon 2s infinite;
 }
 
 @keyframes pulse-neon {
   0%, 100% { 
     box-shadow: 
-      0 0 20px var(--neon-cyan),
-      inset 0 0 20px var(--neon-cyan);
+      0 0 20px var(--primary-white),
+      inset 0 0 20px var(--primary-white);
   }
   50% { 
     box-shadow: 
-      0 0 30px var(--neon-cyan),
-      inset 0 0 30px var(--neon-cyan);
+      0 0 30px var(--primary-white),
+      inset 0 0 30px var(--primary-white);
   }
 }
 
 .neon-panel {
   background: rgba(0, 0, 0, 0.95);
-  border: 2px solid rgba(0, 255, 255, 0.3);
-  box-shadow: 0 0 30px rgba(0, 255, 255, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
 }
 
 /* Neon Buttons */
@@ -107,28 +98,28 @@ html, body {
 }
 
 .neon-btn:hover:not(:disabled) {
-  border-color: var(--neon-cyan);
-  box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
-  color: var(--neon-cyan);
+  border-color: var(--primary-white);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
+  color: var(--primary-white);
 }
 
 .neon-btn.active {
-  border-color: var(--neon-cyan);
-  background: rgba(0, 255, 255, 0.1);
-  color: var(--neon-cyan);
-  box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+  border-color: var(--primary-white);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--primary-white);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
 }
 
 .neon-btn-primary {
-  background: var(--neon-cyan);
+  background: var(--primary-white);
   color: #000;
   border: none;
-  box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
   transition: all 0.3s;
 }
 
 .neon-btn-primary:hover:not(:disabled) {
-  box-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
+  box-shadow: 0 0 30px rgba(255, 255, 255, 0.8);
   transform: translateY(-2px);
 }
 
@@ -146,8 +137,8 @@ html, body {
 
 .neon-input:focus {
   outline: none;
-  border-color: var(--neon-cyan);
-  box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+  border-color: var(--primary-white);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
 }
 
 .neon-input::placeholder {
@@ -163,8 +154,8 @@ html, body {
 
 .neon-select:focus {
   outline: none;
-  border-color: var(--neon-cyan);
-  box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+  border-color: var(--primary-white);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
 }
 
 .neon-select option {
@@ -173,268 +164,7 @@ html, body {
 }
 
 /* ============================================
-   BLACK & WHITE THEME
-   ============================================ */
-
-/* ============================================
-   BLACK & WHITE THEME
-   ============================================ */
-
-/* Regular B&W (no glow) */
-.bw-text {
-  color: var(--primary-white);
-}
-
-.bw-text-gray {
-  color: var(--gray-light);
-}
-
-.bw-border {
-  border: 2px solid var(--primary-white);
-}
-
-.bw-border-thin {
-  border: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-.bw-box {
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  transition: all 0.3s;
-}
-
-.bw-box:hover {
-  border-color: rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.bw-box.active {
-  border-color: var(--primary-white);
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.bw-circle {
-  border: 3px solid var(--primary-white);
-  border-radius: 50%;
-}
-
-.bw-panel {
-  background: rgba(0, 0, 0, 0.95);
-  border: 2px solid rgba(255, 255, 255, 0.2);
-}
-
-.bw-btn {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  transition: all 0.3s;
-}
-
-.bw-btn:hover:not(:disabled) {
-  border-color: var(--primary-white);
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--primary-white);
-}
-
-.bw-btn.active {
-  border-color: var(--primary-white);
-  background: rgba(255, 255, 255, 0.15);
-  color: var(--primary-white);
-}
-
-.bw-btn-primary {
-  background: var(--primary-white);
-  color: var(--primary-black);
-  border: none;
-  transition: all 0.3s;
-}
-
-.bw-btn-primary:hover:not(:disabled) {
-  background: var(--gray-light);
-  transform: translateY(-2px);
-}
-
-.bw-btn-primary:active:not(:disabled) {
-  transform: translateY(0);
-  background: var(--gray-medium);
-}
-
-.bw-input {
-  background: rgba(0, 0, 0, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  transition: all 0.3s;
-}
-
-.bw-input:focus {
-  outline: none;
-  border-color: var(--primary-white);
-  background: rgba(0, 0, 0, 0.9);
-}
-
-.bw-input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.bw-select {
-  background: rgba(0, 0, 0, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  transition: all 0.3s;
-}
-
-.bw-select:focus {
-  outline: none;
-  border-color: var(--primary-white);
-  background: rgba(0, 0, 0, 0.9);
-}
-
-.bw-select option {
-  background: #000;
-  color: white;
-}
-
-/* ============================================
-   BLACK & WHITE NEON THEME (WITH GLOW!)
-   ============================================ */
-
-/* White Glow Effects */
-.bw-neon-glow {
-  filter: drop-shadow(0 0 8px var(--primary-white)) drop-shadow(0 0 15px var(--primary-white));
-}
-
-.bw-neon-text {
-  color: var(--primary-white);
-  text-shadow: 0 0 10px var(--primary-white), 0 0 20px var(--primary-white), 0 0 30px var(--primary-white);
-}
-
-.bw-neon-border {
-  border: 2px solid var(--primary-white);
-  box-shadow: 
-    0 0 10px var(--primary-white),
-    inset 0 0 10px var(--primary-white);
-}
-
-.bw-neon-box {
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
-  transition: all 0.3s;
-}
-
-.bw-neon-box:hover {
-  border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 0 0 25px rgba(255, 255, 255, 0.3);
-}
-
-.bw-neon-box.active {
-  border-color: var(--primary-white);
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: 0 0 20px rgba(255, 255, 255, 0.4);
-}
-
-.bw-neon-circle {
-  border: 3px solid var(--primary-white);
-  border-radius: 50%;
-  box-shadow: 
-    0 0 20px var(--primary-white),
-    inset 0 0 20px var(--primary-white);
-  animation: pulse-bw-neon 2s infinite;
-}
-
-@keyframes pulse-bw-neon {
-  0%, 100% { 
-    box-shadow: 
-      0 0 20px var(--primary-white),
-      inset 0 0 20px var(--primary-white);
-  }
-  50% { 
-    box-shadow: 
-      0 0 30px var(--primary-white),
-      inset 0 0 30px var(--primary-white);
-  }
-}
-
-.bw-neon-panel {
-  background: rgba(0, 0, 0, 0.95);
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  box-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
-}
-
-/* B&W Neon Buttons */
-.bw-neon-btn {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
-  transition: all 0.3s;
-}
-
-.bw-neon-btn:hover:not(:disabled) {
-  border-color: var(--primary-white);
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
-  color: var(--primary-white);
-}
-
-.bw-neon-btn.active {
-  border-color: var(--primary-white);
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--primary-white);
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
-}
-
-.bw-neon-btn-primary {
-  background: var(--primary-white);
-  color: #000;
-  border: none;
-  box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
-  transition: all 0.3s;
-}
-
-.bw-neon-btn-primary:hover:not(:disabled) {
-  box-shadow: 0 0 30px rgba(255, 255, 255, 0.8);
-  transform: translateY(-2px);
-}
-
-.bw-neon-btn-primary:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-/* B&W Neon Inputs */
-.bw-neon-input {
-  background: rgba(0, 0, 0, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
-  transition: all 0.3s;
-}
-
-.bw-neon-input:focus {
-  outline: none;
-  border-color: var(--primary-white);
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
-}
-
-.bw-neon-input::placeholder {
-  color: rgba(255, 255, 255, 0.3);
-}
-
-.bw-neon-select {
-  background: rgba(0, 0, 0, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
-  transition: all 0.3s;
-}
-
-.bw-neon-select:focus {
-  outline: none;
-  border-color: var(--primary-white);
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
-}
-
-.bw-neon-select option {
-  background: #000;
-  color: white;
-}
-
-/* ============================================
-   SCROLLBAR - BLACK & WHITE
+   SCROLLBAR - WHITE NEON
    ============================================ */
 
 ::-webkit-scrollbar {
@@ -447,12 +177,13 @@ html, body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--gray-medium);
+  background: rgba(255, 255, 255, 0.3);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--gray-light);
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 }
 
 .custom-scroll::-webkit-scrollbar {
@@ -464,12 +195,13 @@ html, body {
 }
 
 .custom-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.3);
   border-radius: 4px;
 }
 
 .custom-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 }
 
 /* ============================================
