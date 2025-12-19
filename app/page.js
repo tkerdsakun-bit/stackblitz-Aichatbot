@@ -56,12 +56,12 @@ export default function AIChatbot() {
 
   useEffect(() => {
     if (user) {
-      const savedKey = localStorage.getItem(`key_${user.id}`)
-      const savedProvider = localStorage.getItem(`provider_${user.id}`)
-      const savedModel = localStorage.getItem(`model_${user.id}`)
-      const savedPref = localStorage.getItem(`own_${user.id}`)
-      const driveToken = localStorage.getItem(`drive_${user.id}`)
-      const savedDrive = localStorage.getItem(`dfiles_${user.id}`)
+      const savedKey = localStorage.getItem('key_' + user.id)
+      const savedProvider = localStorage.getItem('provider_' + user.id)
+      const savedModel = localStorage.getItem('model_' + user.id)
+      const savedPref = localStorage.getItem('own_' + user.id)
+      const driveToken = localStorage.getItem('drive_' + user.id)
+      const savedDrive = localStorage.getItem('dfiles_' + user.id)
 
       if (savedKey) setUserApiKey(savedKey)
       if (savedProvider) setSelectedProvider(savedProvider)
@@ -77,7 +77,7 @@ export default function AIChatbot() {
 
   const fetchModels = async (provider) => {
     try {
-      const res = await fetch(`/api/models?provider=${provider}`)
+      const res = await fetch('/api/models?provider=' + provider)
       if (res.ok) {
         const data = await res.json()
         setAvailableModels(data.models || [])
@@ -92,13 +92,13 @@ export default function AIChatbot() {
 
   const changeProvider = (p) => {
     setSelectedProvider(p)
-    localStorage.setItem(`provider_${user.id}`, p)
+    localStorage.setItem('provider_' + user.id, p)
     fetchModels(p)
   }
 
   const changeModel = (m) => {
     setSelectedModel(m)
-    localStorage.setItem(`model_${user.id}`, m)
+    localStorage.setItem('model_' + user.id, m)
   }
 
   const saveKey = () => {
@@ -106,15 +106,15 @@ export default function AIChatbot() {
       notify('Invalid API Key', 'error')
       return
     }
-    localStorage.setItem(`key_${user.id}`, apiKeyTemp.trim())
+    localStorage.setItem('key_' + user.id, apiKeyTemp.trim())
     setUserApiKey(apiKeyTemp.trim())
     setShowSettings(false)
     notify('✓ Saved', 'success')
   }
 
   const clearKey = () => {
-    localStorage.removeItem(`key_${user.id}`)
-    localStorage.removeItem(`own_${user.id}`)
+    localStorage.removeItem('key_' + user.id)
+    localStorage.removeItem('own_' + user.id)
     setUserApiKey('')
     setApiKeyTemp('')
     setUseOwnKey(false)
@@ -129,7 +129,7 @@ export default function AIChatbot() {
     }
     const v = !useOwnKey
     setUseOwnKey(v)
-    localStorage.setItem(`own_${user.id}`, v.toString())
+    localStorage.setItem('own_' + user.id, v.toString())
     notify(v ? '✓ Your API' : '✓ System API', 'success')
   }
 
@@ -145,7 +145,7 @@ export default function AIChatbot() {
       if (!res.ok) {
         if (res.status === 401) {
           setDriveConnected(false)
-          localStorage.removeItem(`drive_${user.id}`)
+          localStorage.removeItem('drive_' + user.id)
           notify('Reconnect Drive', 'error')
           return
         }
@@ -154,7 +154,7 @@ export default function AIChatbot() {
       const data = await res.json()
       setDriveFiles(data.files || [])
       setDriveConnected(true)
-      localStorage.setItem(`drive_${user.id}`, 'connected')
+      localStorage.setItem('drive_' + user.id, 'connected')
     } catch (error) {
       notify('Failed to load', 'error')
     } finally {
@@ -171,14 +171,14 @@ export default function AIChatbot() {
       } else {
         newSel = [...prev, { id: fileId, name: fileName }]
       }
-      localStorage.setItem(`dfiles_${user.id}`, JSON.stringify(newSel))
+      localStorage.setItem('dfiles_' + user.id, JSON.stringify(newSel))
       return newSel
     })
   }
 
   const disconnectDrive = () => {
-    localStorage.removeItem(`drive_${user.id}`)
-    localStorage.removeItem(`dfiles_${user.id}`)
+    localStorage.removeItem('drive_' + user.id)
+    localStorage.removeItem('dfiles_' + user.id)
     setDriveConnected(false)
     setSelectedDriveFiles([])
     notify('Disconnected', 'info')
@@ -219,7 +219,7 @@ export default function AIChatbot() {
       let count = 0
       for (const file of arr) {
         if (file.size > 10 * 1024 * 1024) {
-          notify(`${file.name} too large', 'error')
+          notify(file.name + ' too large', 'error')
           continue
         }
         try {
@@ -238,7 +238,7 @@ export default function AIChatbot() {
       }
       if (count > 0) {
         await loadUserFiles()
-        notify(`✓ ${count} uploaded', 'success')
+        notify('✓ ' + count + ' uploaded', 'success')
       }
     } catch (error) {
       notify('Upload failed', 'error')
@@ -264,7 +264,7 @@ export default function AIChatbot() {
   }
 
   const deleteFile = async (file) => {
-    if (!confirm(`Delete ${file.name}?`)) return
+    if (!confirm('Delete ' + file.name + '?')) return
     try {
       setLoading(true)
       await supabase.storage.from('documents').remove([file.file_path])
@@ -293,7 +293,7 @@ export default function AIChatbot() {
 
       const headers = {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`
+        'Authorization': 'Bearer ' + session.access_token
       }
 
       if (useOwnKey && userApiKey) {
@@ -351,11 +351,11 @@ export default function AIChatbot() {
       {/* Notification */}
       {notification && (
         <div className="fixed top-4 right-4 z-50 animate-slide-in">
-          <div className={`neon-border rounded-xl px-4 py-2 backdrop-blur-xl ${
+          <div className={"neon-border rounded-xl px-4 py-2 backdrop-blur-xl " + (
             notification.type === 'success' ? 'border-green-400' :
             notification.type === 'error' ? 'border-red-400' :
             'border-cyan-400'
-          }`}>
+          )}>
             <span className="text-sm font-medium">{notification.message}</span>
           </div>
         </div>
@@ -408,7 +408,7 @@ export default function AIChatbot() {
             <button
               onClick={toggleKey}
               disabled={!userApiKey}
-              className={`neon-btn p-1.5 rounded-lg ${useOwnKey ? 'active' : ''}`}
+              className={"neon-btn p-1.5 rounded-lg " + (useOwnKey ? 'active' : '')}
               title={useOwnKey ? 'Your API' : 'System'}
             >
               <Power className="w-3.5 h-3.5" />
@@ -430,7 +430,7 @@ export default function AIChatbot() {
             {/* Drive */}
             <button
               onClick={() => setShowDrive(true)}
-              className={`neon-btn p-1.5 rounded-lg ${driveConnected ? 'active' : ''}`}
+              className={"neon-btn p-1.5 rounded-lg " + (driveConnected ? 'active' : '')}
             >
               <Cloud className="w-4 h-4" />
             </button>
@@ -474,12 +474,12 @@ export default function AIChatbot() {
         ) : (
           <>
             {messages.map((msg, i) => (
-              <div key={i} className={`flex mb-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
+              <div key={i} className={"flex mb-4 " + (msg.role === 'user' ? 'justify-end' : 'justify-start')}>
+                <div className={"max-w-[85%] rounded-2xl px-4 py-3 text-sm " + (
                   msg.role === 'user' 
                     ? 'bg-white text-black font-medium' 
                     : 'neon-box bg-black/50 backdrop-blur-xl'
-                }`}>
+                )}>
                   <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                 </div>
               </div>
@@ -630,19 +630,19 @@ export default function AIChatbot() {
                         <button
                           key={f.id}
                           onClick={() => toggleDrive(f.id, f.name)}
-                          className={`w-full text-left neon-box p-3 rounded-xl flex items-center gap-3 ${
+                          className={"w-full text-left neon-box p-3 rounded-xl flex items-center gap-3 " + (
                             selected ? 'active' : ''
-                          }`}
+                          )}
                         >
-                          <div className={`w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 ${
+                          <div className={"w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 " + (
                             selected ? 'border-cyan-400 bg-cyan-400/20' : 'border-gray-700'
-                          }`}>
+                          )}>
                             {selected && <span className="text-xs">✓</span>}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">{f.name}</p>
                             <p className="text-xs text-gray-600">
-                              {f.size ? `${(f.size / 1024).toFixed(1)}K` : 'Doc'}
+                              {f.size ? ((f.size / 1024).toFixed(1) + 'K') : 'Doc'}
                             </p>
                           </div>
                         </button>
@@ -701,7 +701,7 @@ export default function AIChatbot() {
         </div>
       )}
 
-      <style jsx global>{`
+      <style jsx global>{\`
         /* Neon Theme */
         :root {
           --neon-cyan: #00ffff;
@@ -895,7 +895,7 @@ export default function AIChatbot() {
         .animate-fade-in {
           animation: fade-in 0.2s ease-out;
         }
-      `}</style>
+      \`}</style>
     </div>
   )
 }
