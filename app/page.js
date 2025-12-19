@@ -1,86 +1,53 @@
-// This file is too large to display in full
-// Key changes marked with // ⭐ NEW comments
-
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import React, { useState } from 'react'
-import { Upload, Send, FileText, Loader2, Trash2, Database, LogOut, Download, X, AlertCircle, CheckCircle, Menu, Key, Settings, Folder, Power, ChevronDown } from 'lucide-react'
+import { Upload, Send, FileText, Loader2, Trash2, LogOut, X, Power, Cloud, Settings } from 'lucide-react'
 
-// Initial provider configs (will be updated with dynamic models)
-const INITIAL_PROVIDERS = {
+const PROVIDERS = {
   perplexity: { name: 'Perplexity', icon: '🔮' },
   openai: { name: 'OpenAI', icon: '🤖' },
-  gemini: { name: 'Google Gemini', icon: '✨' },
-  huggingface: { name: 'Hugging Face', icon: '🤗' },
+  gemini: { name: 'Gemini', icon: '✨' },
+  huggingface: { name: 'HF', icon: '🤗' },
   deepseek: { name: 'DeepSeek', icon: '🧠' }
 }
 
 export default function AIChatbot() {
   const { user, loading: authLoading, signOut } = useAuth()
   const router = useRouter()
+
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+
   const [uploadedFiles, setUploadedFiles] = useState([])
   const [isDragging, setIsDragging] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState([])
+
   const [notification, setNotification] = useState(null)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showFiles, setShowFiles] = useState(false)
+  const [showDrive, setShowDrive] = useState(false)
 
-  // ⭐ NEW: Dynamic model states
   const [availableModels, setAvailableModels] = useState([])
-  const [loadingModels, setLoadingModels] = useState(false)
-
-  // API states
   const [userApiKey, setUserApiKey] = useState('')
   const [useOwnKey, setUseOwnKey] = useState(false)
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false)
-  const [apiKeyInputTemp, setApiKeyInputTemp] = useState('')
+  const [apiKeyTemp, setApiKeyTemp] = useState('')
   const [selectedProvider, setSelectedProvider] = useState('perplexity')
   const [selectedModel, setSelectedModel] = useState('sonar-reasoning')
 
-  const chatAreaRef = useRef(null)
+  const [driveConnected, setDriveConnected] = useState(false)
+  const [driveFiles, setDriveFiles] = useState([])
+  const [selectedDriveFiles, setSelectedDriveFiles] = useState([])
+  const [loadingDrive, setLoadingDrive] = useState(false)
+
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
-  const folderInputRef = useRef(null)
 
-  const showNotification = (message, type = 'info') => {
-    setNotification({ message, type })
-    setTimeout(() => setNotification(null), 4000)
-  }
-
-  // ⭐ NEW: Fetch models dynamically
-  const fetchModels = async (provider, apiKey = null) => {
-    setLoadingModels(true)
-    try {
-      const headers = {}
-      if (apiKey) {
-        headers['X-API-Key'] = apiKey
-      }
-
-      const res = await fetch(`/api/models?provider=${provider}`, { headers })
-
-      if (!res.ok) throw new Error('Failed to fetch models')
-
-      const data = await res.json()
-      setAvailableModels(data.models || [])
-
-      // Auto-select first model if current selection invalid
-      if (data.models.length > 0 && !data.models.find(m => m.id === selectedModel)) {
-        setSelectedModel(data.models[0].id)
-      }
-    } catch (error) {
-      console.error('Failed to fetch models:', error)
-      showNotification('ไม่สามารถโหลดรายการ Model ได้', 'error')
-      // Set fallback model
-      setSelectedModel('sonar-reasoning')
-    } finally {
-      setLoadingModels(false)
-    }
+  const notify = (msg, type = 'info') => {
+    setNotification({ message: msg, type })
+    setTimeout(() => setNotification(null), 3000)
   }
 
   useEffect(() => {
@@ -88,107 +55,133 @@ export default function AIChatbot() {
   }, [messages])
 
   useEffect(() => {
-    const setVH = () => {
-      const vh = window.innerHeight * 0.01
-      document.documentElement.style.setProperty('--vh', `${vh}px`)
-    }
-    setVH()
-    window.addEventListener('resize', setVH)
-    window.addEventListener('orientationchange', setVH)
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', setVH)
-    }
-    return () => {
-      window.removeEventListener('resize', setVH)
-      window.removeEventListener('orientationchange', setVH)
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', setVH)
-      }
-    }
-  }, [])
-
-  // Load settings
-  useEffect(() => {
     if (user) {
-      const savedKey = localStorage.getItem(`ai_api_key_${user.id}`)
-      const savedProvider = localStorage.getItem(`ai_provider_${user.id}`)
-      const savedModel = localStorage.getItem(`ai_model_${user.id}`)
-      const savedPref = localStorage.getItem(`use_own_key_${user.id}`)
+      const savedKey = localStorage.getItem(`key_${user.id}`)
+      const savedProvider = localStorage.getItem(`provider_${user.id}`)
+      const savedModel = localStorage.getItem(`model_${user.id}`)
+      const savedPref = localStorage.getItem(`own_${user.id}`)
+      const driveToken = localStorage.getItem(`drive_${user.id}`)
+      const savedDrive = localStorage.getItem(`dfiles_${user.id}`)
 
       if (savedKey) setUserApiKey(savedKey)
       if (savedProvider) setSelectedProvider(savedProvider)
       if (savedModel) setSelectedModel(savedModel)
       if (savedPref === 'true') setUseOwnKey(true)
+      if (driveToken) setDriveConnected(true)
+      if (savedDrive) setSelectedDriveFiles(JSON.parse(savedDrive))
+
+      loadUserFiles()
+      fetchModels(savedProvider || 'perplexity')
     }
   }, [user])
 
-  // ⭐ NEW: Load models when provider changes
-  useEffect(() => {
-    if (selectedProvider) {
-      fetchModels(selectedProvider, useOwnKey ? userApiKey : null)
+  const fetchModels = async (provider) => {
+    try {
+      const res = await fetch(`/api/models?provider=${provider}`)
+      if (res.ok) {
+        const data = await res.json()
+        setAvailableModels(data.models || [])
+        if (data.models.length > 0 && !data.models.find(m => m.id === selectedModel)) {
+          setSelectedModel(data.models[0].id)
+        }
+      }
+    } catch (error) {
+      console.error('Model fetch:', error)
     }
-  }, [selectedProvider])
-
-  const handleProviderChange = (provider) => {
-    setSelectedProvider(provider)
-    localStorage.setItem(`ai_provider_${user.id}`, provider)
-    // Models will be fetched by useEffect
   }
 
-  const handleModelChange = (model) => {
-    setSelectedModel(model)
-    localStorage.setItem(`ai_model_${user.id}`, model)
-    showNotification(`เปลี่ยนเป็น ${model}`, 'success')
+  const changeProvider = (p) => {
+    setSelectedProvider(p)
+    localStorage.setItem(`provider_${user.id}`, p)
+    fetchModels(p)
   }
 
-  const openApiKeyModal = () => {
-    setApiKeyInputTemp(userApiKey)
-    setShowApiKeyModal(true)
+  const changeModel = (m) => {
+    setSelectedModel(m)
+    localStorage.setItem(`model_${user.id}`, m)
   }
 
-  const saveApiKey = () => {
-    if (!apiKeyInputTemp.trim()) {
-      showNotification('กรุณากรอก API Key', 'error')
+  const saveKey = () => {
+    if (!apiKeyTemp.trim() || apiKeyTemp.length < 20) {
+      notify('Invalid API Key', 'error')
       return
     }
-    if (apiKeyInputTemp.length < 20) {
-      showNotification('API Key ไม่ถูกต้อง', 'error')
-      return
-    }
-
-    localStorage.setItem(`ai_api_key_${user.id}`, apiKeyInputTemp.trim())
-    setUserApiKey(apiKeyInputTemp.trim())
-    setShowApiKeyModal(false)
-
-    // Refresh models with new API key
-    fetchModels(selectedProvider, apiKeyInputTemp.trim())
-    showNotification(`✅ บันทึก ${INITIAL_PROVIDERS[selectedProvider].name} API Key สำเร็จ!`, 'success')
+    localStorage.setItem(`key_${user.id}`, apiKeyTemp.trim())
+    setUserApiKey(apiKeyTemp.trim())
+    setShowSettings(false)
+    notify('✓ Saved', 'success')
   }
 
-  const clearApiKey = () => {
-    localStorage.removeItem(`ai_api_key_${user.id}`)
-    localStorage.removeItem(`use_own_key_${user.id}`)
+  const clearKey = () => {
+    localStorage.removeItem(`key_${user.id}`)
+    localStorage.removeItem(`own_${user.id}`)
     setUserApiKey('')
-    setApiKeyInputTemp('')
+    setApiKeyTemp('')
     setUseOwnKey(false)
-    setShowApiKeyModal(false)
-    showNotification('ลบ API Key แล้ว', 'info')
+    notify('Cleared', 'info')
   }
 
-  const toggleUseOwnKey = () => {
+  const toggleKey = () => {
     if (!userApiKey) {
-      showNotification('กรุณาตั้งค่า API Key ก่อน', 'error')
-      openApiKeyModal()
+      notify('Set API Key first', 'error')
+      setShowSettings(true)
       return
     }
+    const v = !useOwnKey
+    setUseOwnKey(v)
+    localStorage.setItem(`own_${user.id}`, v.toString())
+    notify(v ? '✓ Your API' : '✓ System API', 'success')
+  }
 
-    const newValue = !useOwnKey
-    setUseOwnKey(newValue)
-    localStorage.setItem(`use_own_key_${user.id}`, newValue.toString())
-    showNotification(
-      newValue ? '✅ เปิดใช้ API Key ของคุณ' : '✅ ปิดใช้ API Key ของคุณ (ใช้ระบบ)',
-      'success'
-    )
+  const connectDrive = () => {
+    setLoadingDrive(true)
+    window.location.href = '/api/auth/google/drive'
+  }
+
+  const loadDrive = async () => {
+    setLoadingDrive(true)
+    try {
+      const res = await fetch('/api/gdrive/files')
+      if (!res.ok) {
+        if (res.status === 401) {
+          setDriveConnected(false)
+          localStorage.removeItem(`drive_${user.id}`)
+          notify('Reconnect Drive', 'error')
+          return
+        }
+        throw new Error('Failed')
+      }
+      const data = await res.json()
+      setDriveFiles(data.files || [])
+      setDriveConnected(true)
+      localStorage.setItem(`drive_${user.id}`, 'connected')
+    } catch (error) {
+      notify('Failed to load', 'error')
+    } finally {
+      setLoadingDrive(false)
+    }
+  }
+
+  const toggleDrive = (fileId, fileName) => {
+    setSelectedDriveFiles(prev => {
+      const exists = prev.find(f => f.id === fileId)
+      let newSel
+      if (exists) {
+        newSel = prev.filter(f => f.id !== fileId)
+      } else {
+        newSel = [...prev, { id: fileId, name: fileName }]
+      }
+      localStorage.setItem(`dfiles_${user.id}`, JSON.stringify(newSel))
+      return newSel
+    })
+  }
+
+  const disconnectDrive = () => {
+    localStorage.removeItem(`drive_${user.id}`)
+    localStorage.removeItem(`dfiles_${user.id}`)
+    setDriveConnected(false)
+    setSelectedDriveFiles([])
+    notify('Disconnected', 'info')
   }
 
   const loadUserFiles = async () => {
@@ -201,233 +194,102 @@ export default function AIChatbot() {
         .order('created_at', { ascending: false })
 
       if (error) throw error
-
-      const formattedFiles = data.map(file => ({
-        id: file.id,
-        name: file.name,
-        size: (file.file_size / 1024).toFixed(2) + ' KB',
-        uploadedAt: new Date(file.created_at).toLocaleString(),
-        file_path: file.file_path,
-        file_type: file.file_type,
-        content: file.content
-      }))
-      setUploadedFiles(formattedFiles)
+      setUploadedFiles(data.map(f => ({
+        id: f.id,
+        name: f.name,
+        size: (f.file_size / 1024).toFixed(1) + 'K',
+        file_path: f.file_path,
+        content: f.content
+      })))
     } catch (error) {
-      console.error('Error loading files:', error)
-      showNotification('ไม่สามารถโหลดไฟล์ได้', 'error')
+      console.error('Load:', error)
     }
   }
 
-  useEffect(() => {
-    if (user) {
-      loadUserFiles()
-    }
-  }, [user])
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login')
-    }
-  }, [user, authLoading, router])
-
   const uploadFiles = async (files) => {
     if (!files || files.length === 0) return
-
-    const fileArray = Array.from(files)
-    const MAX_FILE_SIZE = 10 * 1024 * 1024
-    const MAX_TOTAL_SIZE = 50 * 1024 * 1024
-
-    const totalSize = fileArray.reduce((sum, file) => sum + file.size, 0)
-    if (totalSize > MAX_TOTAL_SIZE) {
-      showNotification(`ขนาดรวมเกิน 50 MB (${(totalSize / 1024 / 1024).toFixed(2)} MB)`, 'error')
-      return
-    }
-
+    const arr = Array.from(files)
     setLoading(true)
-
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
-        showNotification('กรุณาเข้าสู่ระบบก่อน', 'error')
+        notify('Login first', 'error')
         return
       }
-
-      let successCount = 0
-
-      for (let i = 0; i < fileArray.length; i++) {
-        const file = fileArray[i]
-
-        if (file.size > MAX_FILE_SIZE) {
-          showNotification(`${file.name} ใหญ่เกิน 10 MB`, 'error')
+      let count = 0
+      for (const file of arr) {
+        if (file.size > 10 * 1024 * 1024) {
+          notify(`${file.name} too large', 'error')
           continue
         }
-
-        setUploadProgress(prev => [...prev, { name: file.name, progress: 0 }])
-
         try {
           const formData = new FormData()
           formData.append('file', file)
-
-          const response = await fetch('/api/upload', {
+          const res = await fetch('/api/upload', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${session.access_token}` },
             body: formData
           })
-
-          if (!response.ok) {
-            const error = await response.json()
-            throw new Error(error.error || 'Upload failed')
-          }
-
-          setUploadProgress(prev =>
-            prev.map(p => p.name === file.name ? { ...p, progress: 100 } : p)
-          )
-          successCount++
-        } catch (error) {
-          console.error(`Upload error for ${file.name}:`, error)
-          showNotification(`${file.name}: ${error.message}`, 'error')
-          setUploadProgress(prev => prev.filter(p => p.name !== file.name))
+          if (!res.ok) throw new Error('Upload failed')
+          count++
+        } catch (e) {
+          console.error(e)
         }
       }
-
-      if (successCount > 0) {
+      if (count > 0) {
         await loadUserFiles()
-        showNotification(`✅ อัปโหลดสำเร็จ ${successCount}/${fileArray.length} ไฟล์`, 'success')
-        setIsSidebarOpen(false)
+        notify(`✓ ${count} uploaded', 'success')
       }
     } catch (error) {
-      console.error('Upload error:', error)
-      showNotification(`อัปโหลดล้มเหลว: ${error.message}`, 'error')
+      notify('Upload failed', 'error')
     } finally {
       setLoading(false)
-      setTimeout(() => setUploadProgress([]), 1000)
     }
   }
 
   const handleDragOver = (e) => {
     e.preventDefault()
-    e.stopPropagation()
     setIsDragging(true)
   }
 
   const handleDragLeave = (e) => {
     e.preventDefault()
-    e.stopPropagation()
-    if (e.currentTarget === e.target) {
-      setIsDragging(false)
-    }
+    if (e.currentTarget === e.target) setIsDragging(false)
   }
 
   const handleDrop = (e) => {
     e.preventDefault()
-    e.stopPropagation()
     setIsDragging(false)
-
-    const files = e.dataTransfer.files
-    if (files.length > 0) {
-      uploadFiles(files)
-    }
+    if (e.dataTransfer.files.length > 0) uploadFiles(e.dataTransfer.files)
   }
 
-  useEffect(() => {
-    const handlePaste = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
-      const items = e.clipboardData?.items
-      if (!items) return
-
-      const files = []
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].kind === 'file') {
-          files.push(items[i].getAsFile())
-        }
-      }
-
-      if (files.length > 0) {
-        e.preventDefault()
-        uploadFiles(files)
-      }
-    }
-
-    window.addEventListener('paste', handlePaste)
-    return () => window.removeEventListener('paste', handlePaste)
-  }, [user])
-
-  const handleFileUpload = async (event) => {
-    const files = event.target.files
-    await uploadFiles(files)
-    event.target.value = ''
-  }
-
-  const handleFolderUpload = async (event) => {
-    const files = event.target.files
-    await uploadFiles(files)
-    event.target.value = ''
-  }
-
-  const handleDownloadFile = async (file) => {
-    try {
-      const { data, error } = await supabase.storage
-        .from('documents')
-        .createSignedUrl(file.file_path, 60)
-
-      if (error) throw error
-
-      const link = document.createElement('a')
-      link.href = data.signedUrl
-      link.download = file.name
-      link.click()
-      showNotification(`กำลังดาวน์โหลด ${file.name}`, 'success')
-    } catch (error) {
-      console.error('Download error:', error)
-      showNotification('ดาวน์โหลดไม่สำเร็จ', 'error')
-    }
-  }
-
-  const handleDeleteFile = async (file) => {
-    if (!confirm(`ต้องการลบ ${file.name} ใช่หรือไม่?`)) return
-
+  const deleteFile = async (file) => {
+    if (!confirm(`Delete ${file.name}?`)) return
     try {
       setLoading(true)
-
-      const { error: storageError } = await supabase.storage
-        .from('documents')
-        .remove([file.file_path])
-
-      if (storageError) throw storageError
-
-      const { error: dbError } = await supabase
-        .from('files')
-        .delete()
-        .eq('id', file.id)
-        .eq('user_id', user.id)
-
-      if (dbError) throw dbError
-
+      await supabase.storage.from('documents').remove([file.file_path])
+      await supabase.from('files').delete().eq('id', file.id).eq('user_id', user.id)
       await loadUserFiles()
-      showNotification(`ลบ ${file.name} สำเร็จ`, 'success')
+      notify('✓ Deleted', 'success')
     } catch (error) {
-      console.error('Delete error:', error)
-      showNotification('ลบไฟล์ไม่สำเร็จ', 'error')
+      notify('Failed', 'error')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSendMessage = async (e) => {
+  const sendMessage = async (e) => {
     e.preventDefault()
     if (!input.trim() || loading) return
 
-    const userMessage = input.trim()
+    const msg = input.trim()
     setInput('')
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }])
+    setMessages(prev => [...prev, { role: 'user', content: msg }])
     setLoading(true)
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const fileContents = uploadedFiles.map(f => ({
-        name: f.name,
-        content: f.content
-      }))
+      const fileContents = uploadedFiles.map(f => ({ name: f.name, content: f.content }))
 
       const headers = {
         'Content-Type': 'application/json',
@@ -440,79 +302,60 @@ export default function AIChatbot() {
         headers['X-AI-Model'] = selectedModel
       }
 
-      const response = await fetch('/api/chat', {
+      const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: headers,
+        headers,
         body: JSON.stringify({
-          message: userMessage,
+          message: msg,
           fileContents,
+          driveFileIds: selectedDriveFiles.map(f => f.id),
           useOwnKey: useOwnKey && !!userApiKey,
           provider: selectedProvider,
           model: selectedModel
         })
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to get response')
-      }
+      if (!res.ok) throw new Error('Failed')
 
-      const data = await response.json()
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: data.response
-      }])
+      const data = await res.json()
+      setMessages(prev => [...prev, { role: 'assistant', content: data.response }])
     } catch (error) {
-      console.error('Chat error:', error)
-      let errorMessage = 'ขออภัย เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง'
-
-      if (error.message.includes('API key') || error.message.includes('Invalid')) {
-        errorMessage = '❌ API Key ไม่ถูกต้อง กรุณาตรวจสอบ API Key ของคุณ'
-        openApiKeyModal()
-      }
-
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: errorMessage
-      }])
-      showNotification('ส่งข้อความไม่สำเร็จ', 'error')
+      setMessages(prev => [...prev, { role: 'assistant', content: '❌ Error' }])
+      notify('Failed', 'error')
     } finally {
       setLoading(false)
     }
   }
 
+  useEffect(() => {
+    if (!authLoading && !user) router.push('/login')
+  }, [user, authLoading, router])
+
   if (authLoading || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-black">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 text-white animate-spin mx-auto mb-4" />
-          <p className="text-gray-400 text-lg">Loading...</p>
-        </div>
+        <Loader2 className="w-8 h-8 text-cyan-400 animate-spin neon-glow" />
       </div>
     )
   }
 
+  const totalFiles = uploadedFiles.length + selectedDriveFiles.length
+
   return (
     <div 
-      className="flex h-screen bg-black text-white overflow-hidden"
+      className="flex flex-col h-screen bg-black text-white"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      style={{ height: 'calc(var(--vh, 1vh) * 100)' }}
     >
-      {/* Notifications */}
+      {/* Notification */}
       {notification && (
         <div className="fixed top-4 right-4 z-50 animate-slide-in">
-          <div className={`rounded-lg p-4 shadow-xl border flex items-center gap-3 min-w-[280px] ${
-            notification.type === 'success' ? 'bg-green-900 border-green-700' : ''
-          }${
-            notification.type === 'error' ? 'bg-red-900 border-red-700' : ''
-          }${
-            notification.type === 'info' ? 'bg-gray-800 border-gray-600' : ''
+          <div className={`neon-border rounded-xl px-4 py-2 backdrop-blur-xl ${
+            notification.type === 'success' ? 'border-green-400' :
+            notification.type === 'error' ? 'border-red-400' :
+            'border-cyan-400'
           }`}>
-            {notification.type === 'success' && <CheckCircle className="w-5 h-5 text-green-400" />}
-            {notification.type === 'error' && <AlertCircle className="w-5 h-5 text-red-400" />}
-            {notification.type === 'info' && <AlertCircle className="w-5 h-5 text-blue-400" />}
             <span className="text-sm font-medium">{notification.message}</span>
           </div>
         </div>
@@ -520,312 +363,538 @@ export default function AIChatbot() {
 
       {/* Drag Overlay */}
       {isDragging && (
-        <div className="fixed inset-0 bg-white/10 backdrop-blur-sm z-40 flex items-center justify-center">
-          <div className="text-center p-8 bg-gray-900 rounded-xl border-2 border-dashed border-white">
-            <Upload className="w-16 h-16 text-white mx-auto mb-4" />
-            <p className="text-xl font-bold">Drop files here</p>
-            <p className="text-gray-400 mt-2">PDF, Word, Excel, Text (Max 10 MB)</p>
+        <div className="fixed inset-0 bg-black/90 z-40 flex items-center justify-center">
+          <div className="neon-box p-8 rounded-2xl">
+            <Upload className="w-16 h-16 mx-auto mb-3 text-cyan-400 neon-glow" />
+            <p className="text-xl font-bold neon-text">Drop Files</p>
           </div>
         </div>
       )}
 
-      {/* Mobile Sidebar Overlay */}
-      {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/80 z-40 lg:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
-
-      {/* Left Sidebar */}
-      <div className={`
-        fixed lg:relative inset-y-0 left-0 z-40
-        w-80 bg-gray-900 border-r border-gray-800
-        flex flex-col overflow-hidden
-        transition-transform duration-300
-        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-      `}>
-        <div className="p-4 border-b border-gray-800">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Database className="w-5 h-5 text-white" />
-              <h2 className="font-bold text-lg">Documents</h2>
-            </div>
-            <button
-              onClick={() => setIsSidebarOpen(false)}
-              className="lg:hidden p-1 hover:bg-gray-800 rounded transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      {/* Header */}
+      <div className="border-b border-gray-900 p-3 backdrop-blur-xl bg-black/50">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <h1 className="font-bold text-lg neon-text">AI CHAT</h1>
+            <p className="text-xs text-gray-500 truncate">{user?.email}</p>
           </div>
 
-          <div className="space-y-2">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-white text-black hover:bg-gray-200 px-4 py-2.5 rounded-lg transition disabled:opacity-50 font-medium"
+          <div className="flex items-center gap-1.5">
+            {/* Provider */}
+            <select
+              value={selectedProvider}
+              onChange={(e) => changeProvider(e.target.value)}
+              className="neon-select text-xs px-2 py-1.5 rounded-lg"
             >
-              <Upload className="w-4 h-4" />
-              <span className="text-sm">Upload Files</span>
+              {Object.entries(PROVIDERS).map(([key, p]) => (
+                <option key={key} value={key}>{p.icon} {p.name}</option>
+              ))}
+            </select>
+
+            {/* Model */}
+            {availableModels.length > 0 && (
+              <select
+                value={selectedModel}
+                onChange={(e) => changeModel(e.target.value)}
+                className="neon-select text-xs px-2 py-1.5 rounded-lg max-w-[100px] hidden sm:block"
+              >
+                {availableModels.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            )}
+
+            {/* Toggle */}
+            <button
+              onClick={toggleKey}
+              disabled={!userApiKey}
+              className={`neon-btn p-1.5 rounded-lg ${useOwnKey ? 'active' : ''}`}
+              title={useOwnKey ? 'Your API' : 'System'}
+            >
+              <Power className="w-3.5 h-3.5" />
             </button>
 
+            {/* Files */}
             <button
-              onClick={() => folderInputRef.current?.click()}
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2.5 rounded-lg transition disabled:opacity-50 font-medium"
+              onClick={() => setShowFiles(true)}
+              className="neon-btn p-1.5 rounded-lg relative"
             >
-              <Folder className="w-4 h-4" />
-              <span className="text-sm">Upload Folder</span>
+              <FileText className="w-4 h-4" />
+              {totalFiles > 0 && (
+                <span className="absolute -top-1 -right-1 bg-cyan-400 text-black text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center neon-glow">
+                  {totalFiles}
+                </span>
+              )}
+            </button>
+
+            {/* Drive */}
+            <button
+              onClick={() => setShowDrive(true)}
+              className={`neon-btn p-1.5 rounded-lg ${driveConnected ? 'active' : ''}`}
+            >
+              <Cloud className="w-4 h-4" />
+            </button>
+
+            {/* Settings */}
+            <button
+              onClick={() => setShowSettings(true)}
+              className="neon-btn p-1.5 rounded-lg"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+
+            {/* Logout */}
+            <button
+              onClick={signOut}
+              className="neon-btn p-1.5 rounded-lg hover:border-red-400"
+            >
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
-
-          <input ref={fileInputRef} type="file" multiple onChange={handleFileUpload} className="hidden" accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls" />
-          <input ref={folderInputRef} type="file" multiple webkitdirectory="" directory="" onChange={handleFolderUpload} className="hidden" />
-
-          <p className="text-xs text-gray-500 mt-2 text-center">Max 10 MB per file • 50 MB total</p>
         </div>
+      </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {uploadedFiles.length === 0 ? (
-            <div className="text-center py-12">
-              <FileText className="w-12 h-12 text-gray-700 mx-auto mb-3" />
-              <p className="text-gray-500 text-sm">No files yet</p>
-            </div>
-          ) : (
-            uploadedFiles.map((file) => (
-              <div key={file.id} className="group bg-gray-800 hover:bg-gray-750 rounded-lg p-3 border border-gray-700 transition">
-                <div className="flex items-start gap-3">
-                  <FileText className="w-5 h-5 text-gray-400 mt-0.5 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{file.name}</p>
-                    <p className="text-xs text-gray-500 mt-1">{file.size}</p>
-                  </div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                    <button onClick={() => handleDownloadFile(file)} className="p-1.5 hover:bg-gray-700 rounded" title="Download">
-                      <Download className="w-4 h-4 text-blue-400" />
-                    </button>
-                    <button onClick={() => handleDeleteFile(file)} className="p-1.5 hover:bg-gray-700 rounded" title="Delete">
-                      <Trash2 className="w-4 h-4 text-red-400" />
-                    </button>
-                  </div>
-                </div>
+      {/* Chat */}
+      <div className="flex-1 overflow-y-auto p-4 custom-scroll">
+        {messages.length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <div className="w-24 h-24 neon-circle mx-auto mb-4 flex items-center justify-center">
+                <FileText className="w-12 h-12 text-cyan-400" />
               </div>
-            ))
-          )}
-        </div>
-
-        {uploadProgress.length > 0 && (
-          <div className="p-4 border-t border-gray-800 bg-gray-900">
-            <p className="text-xs text-gray-400 mb-2">Uploading...</p>
-            {uploadProgress.map((item, idx) => (
-              <div key={idx} className="mb-2">
-                <p className="text-xs text-gray-300 truncate mb-1">{item.name}</p>
-                <div className="h-1.5 bg-gray-700 rounded-full">
-                  <div className="h-full bg-white transition-all" style={{ width: `${item.progress}%` }} />
+              <h3 className="text-xl font-bold mb-2 neon-text">Start Chatting</h3>
+              <p className="text-sm text-gray-600 mb-3">Upload files or connect Drive</p>
+              <div className="flex gap-3 justify-center text-xs text-gray-700">
+                <span>📁 {uploadedFiles.length}</span>
+                <span>•</span>
+                <span>☁️ {selectedDriveFiles.length}</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {messages.map((msg, i) => (
+              <div key={i} className={`flex mb-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
+                  msg.role === 'user' 
+                    ? 'bg-white text-black font-medium' 
+                    : 'neon-box bg-black/50 backdrop-blur-xl'
+                }`}>
+                  <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                 </div>
               </div>
             ))}
-          </div>
+            <div ref={messagesEndRef} />
+          </>
         )}
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* ⭐ NEW: Enhanced Top Bar with Provider/Model Selectors */}
-        <div className="bg-gray-900 border-b border-gray-800 p-3">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            {/* Left: User Info */}
-            <div className="flex items-center gap-3">
-              <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 hover:bg-gray-800 rounded transition">
-                <Menu className="w-5 h-5" />
-              </button>
-              <div>
-                <h1 className="font-bold text-sm">AI Document Chat</h1>
-                <p className="text-xs text-gray-400">{user?.email || 'User'}</p>
-              </div>
-            </div>
-
-            {/* ⭐ NEW: Center: Provider & Model Selectors */}
-            <div className="flex items-center gap-2 flex-1 justify-center">
-              {/* Provider Selector */}
-              <div className="relative group">
-                <button className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg border border-gray-700 transition text-sm">
-                  <span>{INITIAL_PROVIDERS[selectedProvider].icon}</span>
-                  <span className="hidden sm:inline">{INITIAL_PROVIDERS[selectedProvider].name}</span>
-                  <ChevronDown className="w-4 h-4" />
-                </button>
-                <div className="absolute hidden group-hover:block top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl min-w-[160px] z-50">
-                  {Object.entries(INITIAL_PROVIDERS).map(([key, provider]) => (
-                    <button
-                      key={key}
-                      onClick={() => handleProviderChange(key)}
-                      className={`w-full text-left px-4 py-2 hover:bg-gray-700 transition text-sm flex items-center gap-2 ${
-                        selectedProvider === key ? 'bg-gray-700' : ''
-                      }`}
-                    >
-                      <span>{provider.icon}</span>
-                      <span>{provider.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Model Selector */}
-              <div className="relative group">
-                <button 
-                  disabled={loadingModels}
-                  className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg border border-gray-700 transition text-sm max-w-[200px] disabled:opacity-50"
-                >
-                  {loadingModels ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <span className="truncate">{availableModels.find(m => m.id === selectedModel)?.name || selectedModel}</span>
-                      <ChevronDown className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-                {!loadingModels && availableModels.length > 0 && (
-                  <div className="absolute hidden group-hover:block top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl min-w-[200px] max-h-[300px] overflow-y-auto z-50">
-                    {availableModels.map((model) => (
-                      <button
-                        key={model.id}
-                        onClick={() => handleModelChange(model.id)}
-                        className={`w-full text-left px-4 py-2 hover:bg-gray-700 transition text-sm ${
-                          selectedModel === model.id ? 'bg-gray-700' : ''
-                        }`}
-                      >
-                        {model.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right: Controls */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={toggleUseOwnKey}
-                disabled={!userApiKey}
-                className={`p-2 rounded-lg transition flex items-center gap-1 text-xs ${
-                  useOwnKey ? 'bg-green-900 text-green-300 border border-green-700' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-                title={useOwnKey ? 'Using your API' : 'Using system API'}
-              >
-                <Power className="w-4 h-4" />
-                <span className="hidden sm:inline">{useOwnKey ? 'ON' : 'OFF'}</span>
-              </button>
-
-              <button onClick={openApiKeyModal} className="p-2 hover:bg-gray-800 rounded-lg transition" title="Settings">
-                <Settings className="w-5 h-5" />
-              </button>
-
-              <button onClick={signOut} className="p-2 hover:bg-red-900/20 rounded-lg transition" title="Logout">
-                <LogOut className="w-5 h-5 text-red-400" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Chat Messages */}
-        <div ref={chatAreaRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.length === 0 ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center max-w-md">
-                <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <FileText className="w-8 h-8 text-gray-400" />
-                </div>
-                <h3 className="text-xl font-bold mb-3">Upload files and get instant insights</h3>
-                <div className="space-y-2 text-sm text-gray-400">
-                  <p>💡 Drag & drop files anywhere</p>
-                  <p>📋 Paste with Ctrl+V</p>
-                  <p>📁 Upload folders</p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            messages.map((msg, idx) => (
-              <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] rounded-xl px-4 py-3 ${
-                  msg.role === 'user' ? 'bg-white text-black' : 'bg-gray-800 text-white border border-gray-700'
-                }`}>
-                  <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                </div>
-              </div>
-            ))
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input */}
-        <div className="p-4 border-t border-gray-800 bg-gray-900">
-          <form onSubmit={handleSendMessage} className="flex gap-2">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask anything..."
-              disabled={loading}
-              className="flex-1 bg-gray-800 text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-white focus:outline-none disabled:opacity-50 placeholder-gray-500"
-            />
-            <button
-              type="submit"
-              disabled={loading || !input.trim()}
-              className="bg-white text-black hover:bg-gray-200 px-6 py-3 rounded-lg transition disabled:opacity-50 flex items-center gap-2 font-medium"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-            </button>
-          </form>
-        </div>
+      {/* Input */}
+      <div className="p-3 border-t border-gray-900 backdrop-blur-xl bg-black/50">
+        <form onSubmit={sendMessage} className="flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask anything..."
+            disabled={loading}
+            className="flex-1 neon-input px-4 py-3 rounded-xl text-sm"
+          />
+          <button
+            type="submit"
+            disabled={loading || !input.trim()}
+            className="neon-btn-primary px-6 py-3 rounded-xl font-bold disabled:opacity-30"
+          >
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+          </button>
+        </form>
       </div>
 
-      {/* API Key Modal */}
-      {showApiKeyModal && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-900 rounded-xl p-6 max-w-md w-full border border-gray-800">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <Key className="w-6 h-6" />
-                <h2 className="text-xl font-bold">API Key Settings</h2>
-              </div>
-              <button onClick={() => setShowApiKeyModal(false)} className="p-2 hover:bg-gray-800 rounded-lg">
+      {/* Files Panel */}
+      {showFiles && (
+        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
+          <div className="neon-panel w-full max-w-md max-h-[85vh] overflow-hidden rounded-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-gray-900">
+              <h2 className="font-bold flex items-center gap-2 neon-text">
+                <FileText className="w-5 h-5" />
+                FILES
+              </h2>
+              <button onClick={() => setShowFiles(false)} className="neon-btn p-1.5 rounded-lg">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-300 mb-2">API Key</label>
+            <div className="p-4">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full neon-btn-primary py-3 rounded-xl font-bold text-sm"
+              >
+                <Upload className="w-4 h-4 inline mr-2" />
+                UPLOAD
+              </button>
               <input
-                type="password"
-                value={apiKeyInputTemp}
-                onChange={(e) => setApiKeyInputTemp(e.target.value)}
-                placeholder="Enter your API Key"
-                className="w-full bg-gray-800 text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-white focus:outline-none placeholder-gray-500"
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={(e) => uploadFiles(e.target.files)}
+                className="hidden"
               />
-              <p className="text-xs text-gray-500 mt-2">🔒 Stored locally only</p>
             </div>
 
-            <div className="flex gap-3">
-              <button onClick={saveApiKey} className="flex-1 bg-white text-black hover:bg-gray-200 px-6 py-3 rounded-lg transition font-medium">
-                Save
-              </button>
-              {userApiKey && (
-                <button onClick={clearApiKey} className="px-6 py-3 bg-red-900/20 hover:bg-red-900/30 text-red-400 rounded-lg border border-red-800">
-                  Clear
-                </button>
+            <div className="max-h-[50vh] overflow-y-auto px-4 pb-4 custom-scroll">
+              {uploadedFiles.length === 0 ? (
+                <p className="text-center py-8 text-gray-700 text-sm">No files</p>
+              ) : (
+                <div className="space-y-2">
+                  {uploadedFiles.map((f) => (
+                    <div key={f.id} className="group neon-box p-3 rounded-xl flex items-center justify-between">
+                      <div className="flex-1 min-w-0 mr-2">
+                        <p className="text-sm font-medium truncate">{f.name}</p>
+                        <p className="text-xs text-gray-600">{f.size}</p>
+                      </div>
+                      <button
+                        onClick={() => deleteFile(f)}
+                        className="opacity-0 group-hover:opacity-100 neon-btn p-1.5 rounded-lg"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-400" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
         </div>
       )}
 
+      {/* Drive Panel */}
+      {showDrive && (
+        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
+          <div className="neon-panel w-full max-w-md max-h-[85vh] overflow-hidden rounded-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-gray-900">
+              <h2 className="font-bold flex items-center gap-2 neon-text">
+                <Cloud className="w-5 h-5" />
+                DRIVE
+              </h2>
+              <button onClick={() => setShowDrive(false)} className="neon-btn p-1.5 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-2">
+              {!driveConnected ? (
+                <button
+                  onClick={connectDrive}
+                  disabled={loadingDrive}
+                  className="w-full neon-btn-primary py-3 rounded-xl font-bold text-sm"
+                >
+                  {loadingDrive ? <Loader2 className="w-4 h-4 inline animate-spin" /> : <Cloud className="w-4 h-4 inline mr-2" />}
+                  CONNECT
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={loadDrive}
+                    disabled={loadingDrive}
+                    className="w-full neon-btn-primary py-3 rounded-xl font-bold text-sm"
+                  >
+                    {loadingDrive ? <Loader2 className="w-4 h-4 inline animate-spin" /> : 'LOAD FILES'}
+                  </button>
+                  <button
+                    onClick={disconnectDrive}
+                    className="w-full neon-btn py-2 rounded-xl text-xs"
+                  >
+                    Disconnect
+                  </button>
+                </>
+              )}
+            </div>
+
+            {driveConnected && selectedDriveFiles.length > 0 && (
+              <div className="px-4 pb-2">
+                <div className="neon-box px-3 py-2 rounded-lg text-xs font-medium">
+                  ✓ {selectedDriveFiles.length} selected
+                </div>
+              </div>
+            )}
+
+            {driveConnected && (
+              <div className="max-h-[50vh] overflow-y-auto px-4 pb-4 custom-scroll">
+                {driveFiles.length === 0 ? (
+                  <p className="text-center py-8 text-gray-700 text-sm">Click LOAD FILES</p>
+                ) : (
+                  <div className="space-y-2">
+                    {driveFiles.map((f) => {
+                      const selected = selectedDriveFiles.find(s => s.id === f.id)
+                      return (
+                        <button
+                          key={f.id}
+                          onClick={() => toggleDrive(f.id, f.name)}
+                          className={`w-full text-left neon-box p-3 rounded-xl flex items-center gap-3 ${
+                            selected ? 'active' : ''
+                          }`}
+                        >
+                          <div className={`w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 ${
+                            selected ? 'border-cyan-400 bg-cyan-400/20' : 'border-gray-700'
+                          }`}>
+                            {selected && <span className="text-xs">✓</span>}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{f.name}</p>
+                            <p className="text-xs text-gray-600">
+                              {f.size ? `${(f.size / 1024).toFixed(1)}K` : 'Doc'}
+                            </p>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
+          <div className="neon-panel w-full max-w-md rounded-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-gray-900">
+              <h2 className="font-bold neon-text">API KEY</h2>
+              <button onClick={() => setShowSettings(false)} className="neon-btn p-1.5 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm mb-2 text-gray-500 font-medium">Your API Key</label>
+                <input
+                  type="password"
+                  value={apiKeyTemp}
+                  onChange={(e) => setApiKeyTemp(e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full neon-input px-4 py-3 rounded-xl text-sm"
+                />
+                <p className="text-xs text-gray-700 mt-2">🔒 Stored locally only</p>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={saveKey}
+                  className="flex-1 neon-btn-primary py-3 rounded-xl font-bold text-sm"
+                >
+                  SAVE
+                </button>
+                {userApiKey && (
+                  <button
+                    onClick={clearKey}
+                    className="px-4 py-3 neon-btn rounded-xl text-sm border-red-400 hover:border-red-400"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx global>{`
-        @keyframes slide-in {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
+        /* Neon Theme */
+        :root {
+          --neon-cyan: #00ffff;
+          --neon-blue: #0066ff;
         }
-        .animate-slide-in { animation: slide-in 0.3s ease-out; }
+
+        body {
+          background: #000;
+          overflow: hidden;
+        }
+
+        /* Neon Glow Effect */
+        .neon-glow {
+          filter: drop-shadow(0 0 8px var(--neon-cyan)) drop-shadow(0 0 15px var(--neon-cyan));
+        }
+
+        .neon-text {
+          color: var(--neon-cyan);
+          text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan), 0 0 30px var(--neon-cyan);
+        }
+
+        .neon-border {
+          border: 2px solid var(--neon-cyan);
+          box-shadow: 
+            0 0 10px var(--neon-cyan),
+            inset 0 0 10px var(--neon-cyan);
+        }
+
+        .neon-box {
+          border: 1px solid rgba(0, 255, 255, 0.3);
+          box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
+          transition: all 0.3s;
+        }
+
+        .neon-box:hover {
+          border-color: rgba(0, 255, 255, 0.6);
+          box-shadow: 0 0 25px rgba(0, 255, 255, 0.2);
+        }
+
+        .neon-box.active {
+          border-color: var(--neon-cyan);
+          background: rgba(0, 255, 255, 0.05);
+          box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+
+        .neon-circle {
+          border: 3px solid var(--neon-cyan);
+          border-radius: 50%;
+          box-shadow: 
+            0 0 20px var(--neon-cyan),
+            inset 0 0 20px var(--neon-cyan);
+          animation: pulse-neon 2s infinite;
+        }
+
+        @keyframes pulse-neon {
+          0%, 100% { 
+            box-shadow: 
+              0 0 20px var(--neon-cyan),
+              inset 0 0 20px var(--neon-cyan);
+          }
+          50% { 
+            box-shadow: 
+              0 0 30px var(--neon-cyan),
+              inset 0 0 30px var(--neon-cyan);
+          }
+        }
+
+        .neon-panel {
+          background: rgba(0, 0, 0, 0.95);
+          border: 2px solid rgba(0, 255, 255, 0.3);
+          box-shadow: 0 0 30px rgba(0, 255, 255, 0.2);
+        }
+
+        /* Buttons */
+        .neon-btn {
+          background: transparent;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          color: white;
+          transition: all 0.3s;
+        }
+
+        .neon-btn:hover:not(:disabled) {
+          border-color: var(--neon-cyan);
+          box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+          color: var(--neon-cyan);
+        }
+
+        .neon-btn.active {
+          border-color: var(--neon-cyan);
+          background: rgba(0, 255, 255, 0.1);
+          color: var(--neon-cyan);
+          box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+        }
+
+        .neon-btn-primary {
+          background: var(--neon-cyan);
+          color: #000;
+          border: none;
+          box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+          transition: all 0.3s;
+        }
+
+        .neon-btn-primary:hover:not(:disabled) {
+          box-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
+          transform: translateY(-2px);
+        }
+
+        .neon-btn-primary:active:not(:disabled) {
+          transform: translateY(0);
+        }
+
+        /* Inputs */
+        .neon-input {
+          background: rgba(0, 0, 0, 0.8);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          color: white;
+          transition: all 0.3s;
+        }
+
+        .neon-input:focus {
+          outline: none;
+          border-color: var(--neon-cyan);
+          box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+        }
+
+        .neon-input::placeholder {
+          color: rgba(255, 255, 255, 0.3);
+        }
+
+        .neon-select {
+          background: rgba(0, 0, 0, 0.8);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          color: white;
+          transition: all 0.3s;
+        }
+
+        .neon-select:focus {
+          outline: none;
+          border-color: var(--neon-cyan);
+          box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+        }
+
+        .neon-select option {
+          background: #000;
+          color: white;
+        }
+
+        /* Scrollbar */
+        .custom-scroll::-webkit-scrollbar {
+          width: 8px;
+        }
+
+        .custom-scroll::-webkit-scrollbar-track {
+          background: rgba(0, 0, 0, 0.5);
+        }
+
+        .custom-scroll::-webkit-scrollbar-thumb {
+          background: rgba(0, 255, 255, 0.3);
+          border-radius: 4px;
+        }
+
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+          background: rgba(0, 255, 255, 0.5);
+        }
+
+        /* Animations */
+        @keyframes slide-in {
+          from {
+            transform: translateY(-20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+
+        .animate-slide-in {
+          animation: slide-in 0.3s ease-out;
+        }
+
+        .animate-fade-in {
+          animation: fade-in 0.2s ease-out;
+        }
       `}</style>
     </div>
   )
