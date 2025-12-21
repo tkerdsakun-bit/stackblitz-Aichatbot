@@ -37,10 +37,10 @@ export default function AIChatbot() {
   const [selectedProvider, setSelectedProvider] = useState('perplexity')
   const [selectedModel, setSelectedModel] = useState('sonar-reasoning')
 
-  const [driveConnected, setDriveConnected] = useState(false)
-  const [driveFiles, setDriveFiles] = useState([])
-  const [selectedDriveFiles, setSelectedDriveFiles] = useState([])
-  const [loadingDrive, setLoadingDrive] = useState(false)
+  // ✅ NEW - Drive link states
+  const [driveLink, setDriveLink] = useState('')
+  const [loadingLink, setLoadingLink] = useState(false)
+  const [driveLinkFiles, setDriveLinkFiles] = useState([])
 
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -60,15 +60,11 @@ export default function AIChatbot() {
       const savedProvider = localStorage.getItem('provider_' + user.id)
       const savedModel = localStorage.getItem('model_' + user.id)
       const savedPref = localStorage.getItem('own_' + user.id)
-      const driveToken = localStorage.getItem('drive_' + user.id)
-      const savedDrive = localStorage.getItem('dfiles_' + user.id)
 
       if (savedKey) setUserApiKey(savedKey)
       if (savedProvider) setSelectedProvider(savedProvider)
       if (savedModel) setSelectedModel(savedModel)
       if (savedPref === 'true') setUseOwnKey(true)
-      if (driveToken) setDriveConnected(true)
-      if (savedDrive) setSelectedDriveFiles(JSON.parse(savedDrive))
 
       loadUserFiles()
       fetchModels(savedProvider || 'perplexity')
@@ -133,60 +129,54 @@ export default function AIChatbot() {
     notify(v ? '✓ Your API' : '✓ System API', 'success')
   }
 
-  const connectDrive = () => {
-    setLoadingDrive(true)
-   window.location.href = '/api/google/drive'
-  }
-
-  const loadDrive = async () => {
-  setLoadingDrive(true)
-  try {
-    const { data: { session } } = await supabase.auth.getSession()  // ✅ เพิ่มบรรทัดนี้
-    const res = await fetch('/api/gdrive/files', {
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`  // ✅ เพิ่มบรรทัดนี้
-      }
-    })
-    if (!res.ok) {
-      if (res.status === 401) {
-        setDriveConnected(false)
-        localStorage.removeItem('drive_' + user.id)
-        notify('Reconnect Drive', 'error')
-        return
-      }
-      throw new Error('Failed')
+  // ✅ NEW - Fetch file from Drive link
+  const fetchDriveLink = async () => {
+    if (!driveLink.trim()) {
+      notify('Please enter a Google Drive link', 'error')
+      return
     }
-    const data = await res.json()
-    setDriveFiles(data.files || [])
-    setDriveConnected(true)
-    localStorage.setItem('drive_' + user.id, 'connected')
-  } catch (error) {
-    notify('Failed to load', 'error')
-  } finally {
-    setLoadingDrive(false)
-  }
-}
 
-  const toggleDrive = (fileId, fileName) => {
-    setSelectedDriveFiles(prev => {
-      const exists = prev.find(f => f.id === fileId)
-      let newSel
-      if (exists) {
-        newSel = prev.filter(f => f.id !== fileId)
-      } else {
-        newSel = [...prev, { id: fileId, name: fileName }]
+    setLoadingLink(true)
+    try {
+      const res = await fetch('/api/gdrive/parse-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: driveLink.trim() })
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to fetch file')
       }
-      localStorage.setItem('dfiles_' + user.id, JSON.stringify(newSel))
-      return newSel
-    })
+
+      const data = await res.json()
+      
+      // Add to Drive link files list
+      setDriveLinkFiles(prev => {
+        // Avoid duplicates
+        const exists = prev.find(f => f.fileId === data.file.fileId)
+        if (exists) {
+          notify('File already added', 'info')
+          return prev
+        }
+        return [...prev, data.file]
+      })
+
+      setDriveLink('') // Clear input
+      notify(`✓ Added: ${data.file.name}`, 'success')
+
+    } catch (error) {
+      console.error('Drive link error:', error)
+      notify(error.message || 'Failed to fetch file', 'error')
+    } finally {
+      setLoadingLink(false)
+    }
   }
 
-  const disconnectDrive = () => {
-    localStorage.removeItem('drive_' + user.id)
-    localStorage.removeItem('dfiles_' + user.id)
-    setDriveConnected(false)
-    setSelectedDriveFiles([])
-    notify('Disconnected', 'info')
+  // ✅ NEW - Remove a Drive link file
+  const removeDriveLinkFile = (fileId) => {
+    setDriveLinkFiles(prev => prev.filter(f => f.fileId !== fileId))
+    notify('Removed', 'info')
   }
 
   const loadUserFiles = async () => {
@@ -294,7 +284,12 @@ export default function AIChatbot() {
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const fileContents = uploadedFiles.map(f => ({ name: f.name, content: f.content }))
+      
+      // ✅ COMBINE uploaded files AND Drive link files
+      const fileContents = [
+        ...uploadedFiles.map(f => ({ name: f.name, content: f.content })),
+        ...driveLinkFiles.map(f => ({ name: f.name, content: f.content }))
+      ]
 
       const headers = {
         'Content-Type': 'application/json',
@@ -312,8 +307,8 @@ export default function AIChatbot() {
         headers,
         body: JSON.stringify({
           message: msg,
-          fileContents,
-          driveFileIds: selectedDriveFiles.map(f => f.id),
+          fileContents, // Now includes both uploaded and Drive link files
+          driveFileIds: [], // No longer needed
           useOwnKey: useOwnKey && !!userApiKey,
           provider: selectedProvider,
           model: selectedModel
@@ -344,7 +339,7 @@ export default function AIChatbot() {
     )
   }
 
-  const totalFiles = uploadedFiles.length + selectedDriveFiles.length
+  const totalFiles = uploadedFiles.length + driveLinkFiles.length
 
   return (
     <div 
@@ -427,7 +422,7 @@ export default function AIChatbot() {
 
             <button
               onClick={() => setShowDrive(true)}
-              className={"neon-btn p-1.5 rounded-lg " + (driveConnected ? 'active' : '')}
+              className="neon-btn p-1.5 rounded-lg"
             >
               <Cloud className="w-4 h-4" />
             </button>
@@ -457,11 +452,11 @@ export default function AIChatbot() {
                 <FileText className="w-12 h-12 text-white" />
               </div>
               <h3 className="text-xl font-bold mb-2 neon-text">Start Chatting</h3>
-              <p className="text-sm text-gray-600 mb-3">Upload files or connect Drive</p>
+              <p className="text-sm text-gray-600 mb-3">Upload files or add Drive links</p>
               <div className="flex gap-3 justify-center text-xs text-gray-700">
                 <span>📁 {uploadedFiles.length}</span>
                 <span>•</span>
-                <span>☁️ {selectedDriveFiles.length}</span>
+                <span>☁️ {driveLinkFiles.length}</span>
               </div>
             </div>
           </div>
@@ -503,13 +498,14 @@ export default function AIChatbot() {
         </form>
       </div>
 
+      {/* FILES MODAL */}
       {showFiles && (
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
           <div className="neon-panel w-full max-w-md max-h-[85vh] overflow-hidden rounded-2xl">
             <div className="flex items-center justify-between p-4 border-b border-gray-900">
               <h2 className="font-bold flex items-center gap-2 neon-text">
                 <FileText className="w-5 h-5" />
-                FILES
+                UPLOADED FILES
               </h2>
               <button onClick={() => setShowFiles(false)} className="neon-btn p-1.5 rounded-lg">
                 <X className="w-5 h-5" />
@@ -559,94 +555,109 @@ export default function AIChatbot() {
         </div>
       )}
 
+      {/* DRIVE LINKS MODAL */}
       {showDrive && (
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
           <div className="neon-panel w-full max-w-md max-h-[85vh] overflow-hidden rounded-2xl">
             <div className="flex items-center justify-between p-4 border-b border-gray-900">
               <h2 className="font-bold flex items-center gap-2 neon-text">
                 <Cloud className="w-5 h-5" />
-                DRIVE
+                GOOGLE DRIVE LINKS
               </h2>
               <button onClick={() => setShowDrive(false)} className="neon-btn p-1.5 rounded-lg">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-4 space-y-2">
-              {!driveConnected ? (
-                <button
-                  onClick={connectDrive}
-                  disabled={loadingDrive}
-                  className="w-full neon-btn-primary py-3 rounded-xl font-bold text-sm"
-                >
-                  {loadingDrive ? <Loader2 className="w-4 h-4 inline animate-spin" /> : <Cloud className="w-4 h-4 inline mr-2" />}
-                  CONNECT
-                </button>
-              ) : (
-                <>
-                  <button
-                    onClick={loadDrive}
-                    disabled={loadingDrive}
-                    className="w-full neon-btn-primary py-3 rounded-xl font-bold text-sm"
-                  >
-                    {loadingDrive ? <Loader2 className="w-4 h-4 inline animate-spin" /> : 'LOAD FILES'}
-                  </button>
-                  <button
-                    onClick={disconnectDrive}
-                    className="w-full neon-btn py-2 rounded-xl text-xs"
-                  >
-                    Disconnect
-                  </button>
-                </>
-              )}
+            {/* Instructions */}
+            <div className="p-4 bg-gray-900/50 border-b border-gray-800">
+              <p className="text-xs text-gray-400 mb-2">
+                📌 How to share Google Drive files:
+              </p>
+              <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
+                <li>Open your file in Google Drive</li>
+                <li>Click "Share" → "Anyone with the link"</li>
+                <li>Copy link and paste below</li>
+              </ol>
             </div>
 
-            {driveConnected && selectedDriveFiles.length > 0 && (
+            {/* Link Input */}
+            <div className="p-4 space-y-2">
+              <input
+                type="text"
+                value={driveLink}
+                onChange={(e) => setDriveLink(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && fetchDriveLink()}
+                placeholder="Paste Google Drive link here..."
+                className="w-full neon-input px-4 py-3 rounded-xl text-sm"
+                disabled={loadingLink}
+              />
+              <button
+                onClick={fetchDriveLink}
+                disabled={loadingLink || !driveLink.trim()}
+                className="w-full neon-btn-primary py-3 rounded-xl font-bold text-sm"
+              >
+                {loadingLink ? (
+                  <Loader2 className="w-4 h-4 inline animate-spin mr-2" />
+                ) : (
+                  <Cloud className="w-4 h-4 inline mr-2" />
+                )}
+                {loadingLink ? 'FETCHING...' : 'ADD FILE'}
+              </button>
+            </div>
+
+            {/* Added Files */}
+            {driveLinkFiles.length > 0 && (
               <div className="px-4 pb-2">
                 <div className="neon-box px-3 py-2 rounded-lg text-xs font-medium">
-                  ✓ {selectedDriveFiles.length} selected
+                  ✓ {driveLinkFiles.length} file{driveLinkFiles.length > 1 ? 's' : ''} added
                 </div>
               </div>
             )}
 
-            {driveConnected && (
-              <div className="max-h-[50vh] overflow-y-auto px-4 pb-4 custom-scroll">
-                {driveFiles.length === 0 ? (
-                  <p className="text-center py-8 text-gray-700 text-sm">Click LOAD FILES</p>
-                ) : (
-                  <div className="space-y-2">
-                    {driveFiles.map((f) => {
-                      const selected = selectedDriveFiles.find(s => s.id === f.id)
-                      return (
-                        <button
-                          key={f.id}
-                          onClick={() => toggleDrive(f.id, f.name)}
-                          className={"w-full text-left neon-box p-3 rounded-xl flex items-center gap-3 " + (
-                            selected ? 'active' : ''
-                          )}
-                        >
-                          <div className={"w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 " + (
-                            selected ? 'border-cyan-400 bg-cyan-400/20' : 'border-gray-700'
-                          )}>
-                            {selected && <span className="text-xs">✓</span>}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{f.name}</p>
-                            <p className="text-xs text-gray-600">
-                              {f.size ? ((f.size / 1024).toFixed(1) + 'K') : 'Doc'}
-                            </p>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
+            {/* File List */}
+            <div className="max-h-[40vh] overflow-y-auto px-4 pb-4 custom-scroll">
+              {driveLinkFiles.length === 0 ? (
+                <p className="text-center py-8 text-gray-700 text-sm">
+                  No files added yet
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {driveLinkFiles.map((file) => (
+                    <div
+                      key={file.fileId}
+                      className="neon-box p-3 rounded-xl flex items-center justify-between group"
+                    >
+                      <div className="flex-1 min-w-0 mr-2">
+                        <p className="text-sm font-medium truncate">{file.name}</p>
+                        <p className="text-xs text-gray-600">
+                          {file.type} • {(file.content?.length / 1024).toFixed(1)}KB
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => removeDriveLinkFile(file.fileId)}
+                        className="opacity-0 group-hover:opacity-100 neon-btn p-1.5 rounded-lg"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-400" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Supported Formats */}
+            <div className="p-4 bg-gray-900/30 border-t border-gray-800">
+              <p className="text-xs text-gray-600">
+                ✅ Google Docs, Sheets, TXT files<br />
+                ⚠️ PDFs require file upload (not links)
+              </p>
+            </div>
           </div>
         </div>
       )}
 
+      {/* SETTINGS MODAL */}
       {showSettings && (
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in">
           <div className="neon-panel w-full max-w-md rounded-2xl">
