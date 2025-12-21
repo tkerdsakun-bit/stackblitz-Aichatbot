@@ -273,9 +273,71 @@ export default function AIChatbot() {
     }
   }
 
-  const sendMessage = async (e) => {
-    e.preventDefault()
-    if (!input.trim() || loading) return
+ const sendMessage = async (e) => {
+  e.preventDefault()
+  if (!input.trim() || loading) return
+
+  const msg = input.trim()
+  setInput('')
+  setMessages(prev => [...prev, { role: 'user', content: msg }])
+  setLoading(true)
+
+  try {
+    // ✅ FIX: Check session first
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    
+    if (!session || sessionError) {
+      notify('Session expired - please log in', 'error')
+      router.push('/login')
+      setLoading(false)
+      return
+    }
+
+    // ✅ COMBINE uploaded files AND Drive link files
+    const fileContents = [
+      ...uploadedFiles.map(f => ({ name: f.name, content: f.content })),
+      ...driveLinkFiles.map(f => ({ name: f.name, content: f.content }))
+    ]
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + session.access_token
+    }
+
+    if (useOwnKey && userApiKey) {
+      headers['X-User-API-Key'] = userApiKey
+      headers['X-AI-Provider'] = selectedProvider
+      headers['X-AI-Model'] = selectedModel
+    }
+
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        message: msg,
+        fileContents,
+        driveFileIds: [],
+        useOwnKey: useOwnKey && !!userApiKey,
+        provider: selectedProvider,
+        model: selectedModel
+      })
+    })
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}))
+      throw new Error(errorData.error || 'Failed')
+    }
+
+    const data = await res.json()
+    setMessages(prev => [...prev, { role: 'assistant', content: data.response }])
+  } catch (error) {
+    console.error('Chat error:', error)
+    setMessages(prev => [...prev, { role: 'assistant', content: '❌ Error: ' + error.message }])
+    notify('Failed: ' + error.message, 'error')
+  } finally {
+    setLoading(false)
+  }
+}
 
     const msg = input.trim()
     setInput('')
