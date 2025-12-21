@@ -344,9 +344,6 @@ export default function AIChatbot() {
     setMessages(prev => [...prev, { role: 'user', content: msg }])
     setLoading(true)
 
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      
       // ✅ COMBINE uploaded files AND Drive link files
       const fileContents = [
         ...uploadedFiles.map(f => ({ name: f.name, content: f.content })),
