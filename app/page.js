@@ -273,6 +273,34 @@ export default function AIChatbot() {
     }
   }
 
+  // ✅ download file from Supabase
+  const downloadFile = async (file) => {
+    try {
+      const { data, error } = await supabase
+        .storage
+        .from('documents')        // bucket name
+        .download(file.file_path) // use file_path from DB
+
+      if (error) {
+        console.error('Download error:', error)
+        notify('Download failed', 'error')
+        return
+      }
+
+      const url = URL.createObjectURL(data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = file.name
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Download error:', err)
+      notify('Download failed', 'error')
+    }
+  }
+
   // ✅ SINGLE sendMessage function with all fixes
   const sendMessage = async (e) => {
     e.preventDefault()
@@ -284,7 +312,6 @@ export default function AIChatbot() {
     setLoading(true)
 
     try {
-      // ✅ Check session first
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
       
       if (!session || sessionError) {
@@ -294,7 +321,6 @@ export default function AIChatbot() {
         return
       }
 
-      // ✅ Combine uploaded files AND Drive link files
       const fileContents = [
         ...uploadedFiles.map(f => ({ name: f.name, content: f.content })),
         ...driveLinkFiles.map(f => ({ name: f.name, content: f.content }))
@@ -554,12 +580,20 @@ export default function AIChatbot() {
                         <p className="text-sm font-medium truncate">{f.name}</p>
                         <p className="text-xs text-gray-600">{f.size}</p>
                       </div>
-                      <button
-                        onClick={() => deleteFile(f)}
-                        className="opacity-0 group-hover:opacity-100 neon-btn p-1.5 rounded-lg"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-400" />
-                      </button>
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
+                        <button
+                          onClick={() => downloadFile(f)}
+                          className="neon-btn p-1.5 rounded-lg"
+                        >
+                          <FileText className="w-4 h-4 text-cyan-400" />
+                        </button>
+                        <button
+                          onClick={() => deleteFile(f)}
+                          className="neon-btn p-1.5 rounded-lg"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-400" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
