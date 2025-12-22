@@ -95,7 +95,7 @@ async function fetchOpenAIModels(userApiKey) {
 // Perplexity - Return available models (no public API for model list)
 async function fetchPerplexityModels(userApiKey) {
   return [
-    { id: 'sonar-reasoning', name: 'sonar-reasoning-pro' },
+    { id: 'sonar-reasoning', name: 'sonar-pro' },
     { id: 'llama-3.1-sonar-small-128k-online', name: 'Sonar Small (Online)' },
     { id: 'llama-3.1-sonar-large-128k-online', name: 'Sonar Large (Online)' },
     { id: 'llama-3.1-sonar-huge-128k-online', name: 'Sonar Huge (Online)' }
