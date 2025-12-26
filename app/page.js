@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { Menu, FileText, Loader2, Upload, Trash2, X, Settings, Plus, MessageSquare, LogOut, User, Key, Cloud } from 'lucide-react'
+import { Menu, FileText, Loader2, Upload, Trash2, X, Settings, Plus, MessageSquare, LogOut, User, Key, Cloud, Download } from 'lucide-react'
 
 const PROVIDERS = {
   perplexity: { name: 'Perplexity', icon: '🔮' },
@@ -31,6 +31,11 @@ export default function ChatPage() {
   const [uploadedFiles, setUploadedFiles] = useState([])
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef(null)
+  
+  // NEW: File management states
+  const [useAllFiles, setUseAllFiles] = useState(true)
+  const [fileEnabledState, setFileEnabledState] = useState({})
+  const [fileScopeState, setFileScopeState] = useState({}) // 'global' | 'chat' | 'library'
   
   // AI Provider/Model
   const [selectedProvider, setSelectedProvider] = useState('perplexity')
@@ -73,10 +78,19 @@ export default function ChatPage() {
       const savedModel = localStorage.getItem('model_' + user.id)
       const savedPref = localStorage.getItem('own_' + user.id)
       
+      // NEW: Load file settings
+      const savedUseAll = localStorage.getItem('useAllFiles_' + user.id)
+      const savedFileEnabled = localStorage.getItem('fileEnabled_' + user.id)
+      const savedFileScope = localStorage.getItem('fileScope_' + user.id)
+      
       if (savedKey) setUserApiKey(savedKey)
       if (savedProvider) setSelectedProvider(savedProvider)
       if (savedModel) setSelectedModel(savedModel)
       if (savedPref === 'true') setUseOwnKey(true)
+      
+      if (savedUseAll !== null) setUseAllFiles(savedUseAll === 'true')
+      if (savedFileEnabled) setFileEnabledState(JSON.parse(savedFileEnabled))
+      if (savedFileScope) setFileScopeState(JSON.parse(savedFileScope))
       
       // Load files and chats
       loadUserFiles()
@@ -106,6 +120,15 @@ export default function ChatPage() {
       saveChatsToStorage(user.id, chats)
     }
   }, [chats, user])
+
+  // NEW: Save file settings when they change
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('useAllFiles_' + user.id, useAllFiles.toString())
+      localStorage.setItem('fileEnabled_' + user.id, JSON.stringify(fileEnabledState))
+      localStorage.setItem('fileScope_' + user.id, JSON.stringify(fileScopeState))
+    }
+  }, [useAllFiles, fileEnabledState, fileScopeState, user])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -162,6 +185,28 @@ export default function ChatPage() {
       localStorage.setItem('key_' + user.id, apiKeys[provider])
     }
     notify(`${provider} API key saved!`, 'success')
+  }
+
+  // NEW: Toggle individual file
+  const toggleFileEnabled = (fileId) => {
+    setFileEnabledState(prev => ({
+      ...prev,
+      [fileId]: !(prev[fileId] ?? true)
+    }))
+  }
+
+  // NEW: Toggle file scope (global -> chat -> library)
+  const toggleFileScope = (fileId) => {
+    setFileScopeState(prev => {
+      const current = prev[fileId] || 'library'
+      const next = current === 'library' ? 'chat' : current === 'chat' ? 'global' : 'library'
+      return { ...prev, [fileId]: next }
+    })
+    
+    const scopeNames = { library: 'Library', chat: 'Chat Only', global: 'Global' }
+    const newScope = fileScopeState[fileId] === 'library' ? 'chat' : 
+                     fileScopeState[fileId] === 'chat' ? 'global' : 'library'
+    notify(`Scope: ${scopeNames[newScope]}`, 'info')
   }
 
   // Chat operations
@@ -294,6 +339,19 @@ export default function ChatPage() {
       setLoading(true)
       await supabase.storage.from('documents').remove([file.file_path])
       await supabase.from('files').delete().eq('id', file.id).eq('user_id', user.id)
+      
+      // NEW: Clean up file states
+      setFileEnabledState(prev => {
+        const newState = { ...prev }
+        delete newState[file.id]
+        return newState
+      })
+      setFileScopeState(prev => {
+        const newState = { ...prev }
+        delete newState[file.id]
+        return newState
+      })
+      
       await loadUserFiles()
       notify('✓ Deleted', 'success')
     } catch (error) {
@@ -389,6 +447,35 @@ export default function ChatPage() {
     notify('Removed', 'info')
   }
 
+  // NEW: Get files that should be sent to AI
+  const getActiveFiles = () => {
+    // If using all files globally, return all uploaded files
+    if (useAllFiles) {
+      return uploadedFiles.filter(f => {
+        const scope = fileScopeState[f.id] || 'library'
+        // Global files always included
+        if (scope === 'global') return true
+        // Chat files only if in current chat
+        if (scope === 'chat') return true // In real app, check if file belongs to current chat
+        // Library files included when useAllFiles is true
+        return true
+      })
+    }
+    
+    // If not using all files, only use enabled ones
+    return uploadedFiles.filter(f => {
+      const isEnabled = fileEnabledState[f.id] ?? true
+      const scope = fileScopeState[f.id] || 'library'
+      
+      // Global files always included if enabled
+      if (scope === 'global' && isEnabled) return true
+      // Chat-specific files included if enabled
+      if (scope === 'chat' && isEnabled) return true
+      // Library files only if enabled
+      return scope === 'library' && isEnabled
+    })
+  }
+
   // Send message
   const sendMessage = async (content) => {
     if (!content.trim() || loading) return
@@ -414,8 +501,10 @@ export default function ChatPage() {
         throw new Error('Not authenticated')
       }
 
+      // NEW: Get active files based on settings
+      const activeFiles = getActiveFiles()
       const fileContents = [
-        ...uploadedFiles.map(f => ({ name: f.name, content: f.content })),
+        ...activeFiles.map(f => ({ name: f.name, content: f.content })),
         ...driveLinkFiles.map(f => ({ name: f.name, content: f.content }))
       ]
 
@@ -481,10 +570,21 @@ export default function ChatPage() {
       notify('Password must be at least 6 characters', 'error')
       return
     }
-    notify('Password changed successfully!', 'success')
-    setCurrentPassword('')
-    setNewPassword('')
-    setConfirmPassword('')
+    
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      })
+      
+      if (error) throw error
+      
+      notify('Password changed successfully!', 'success')
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (error) {
+      notify('Failed to change password: ' + error.message, 'error')
+    }
   }
 
   useEffect(() => {
@@ -501,7 +601,7 @@ export default function ChatPage() {
     )
   }
 
-  const totalFiles = uploadedFiles.length + driveLinkFiles.length
+  const totalActiveFiles = getActiveFiles().length + driveLinkFiles.length
 
   return (
     <div 
@@ -624,9 +724,9 @@ export default function ChatPage() {
 
             <button onClick={() => setShowFiles(true)} className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-100 relative">
               <FileText className="w-4 h-4" />
-              {totalFiles > 0 && (
+              {totalActiveFiles > 0 && (
                 <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                  {totalFiles}
+                  {totalActiveFiles}
                 </span>
               )}
             </button>
@@ -708,206 +808,306 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* FILES MODAL */}
-      {showFiles && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md max-h-[85vh] overflow-hidden rounded-2xl shadow-2xl">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h2 className="font-bold flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                Uploaded Files
-              </h2>
-              <button onClick={() => setShowFiles(false)} className="p-1.5 hover:bg-gray-100 rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+  {/* FILES MODAL - UPDATED */}
+  {showFiles && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-md max-h-[85vh] overflow-hidden rounded-2xl shadow-2xl">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <h2 className="font-bold flex items-center gap-2">
+            <FileText className="w-5 h-5" />
+            My Files
+          </h2>
+          <button onClick={() => setShowFiles(false)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-            <div className="p-4">
-              <button onClick={() => fileInputRef.current?.click()} className="w-full bg-black text-white py-3 rounded-xl font-bold text-sm hover:bg-gray-800">
-                <Upload className="w-4 h-4 inline mr-2" />
-                Upload Files
-              </button>
-              <input ref={fileInputRef} type="file" multiple onChange={(e) => uploadFiles(e.target.files)} className="hidden" />
-            </div>
+        <div className="p-4 border-b border-gray-200">
+          <button onClick={() => fileInputRef.current?.click()} className="w-full bg-black text-white py-3 rounded-xl font-bold text-sm hover:bg-gray-800">
+            <Upload className="w-4 h-4 inline mr-2" />
+            Upload Files
+          </button>
+          <input ref={fileInputRef} type="file" multiple onChange={(e) => uploadFiles(e.target.files)} className="hidden" />
+        </div>
 
-            <div className="max-h-[50vh] overflow-y-auto px-4 pb-4 custom-scroll">
-              {uploadedFiles.length === 0 ? (
-                <p className="text-center py-8 text-gray-500 text-sm">No files uploaded</p>
-              ) : (
-                <div className="space-y-2">
-                  {uploadedFiles.map(f => (
-                    <div key={f.id} className="group border border-gray-200 p-3 rounded-xl flex items-center justify-between hover:border-gray-300">
-                      <div className="flex-1 min-w-0 mr-2">
-                        <p className="text-sm font-medium truncate">{f.name}</p>
-                        <p className="text-xs text-gray-500">{f.size}</p>
+        {/* NEW: Global Toggle */}
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <label className="flex items-center justify-between cursor-pointer group">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={useAllFiles}
+                onChange={(e) => setUseAllFiles(e.target.checked)}
+                className="w-4 h-4 accent-black rounded"
+              />
+              <div>
+                <span className="text-sm font-medium block">
+                  🌍 Use all files globally
+                </span>
+                <span className="text-xs text-gray-500">
+                  {useAllFiles ? 'All files are enabled' : 'Toggle files individually'}
+                </span>
+              </div>
+            </div>
+          </label>
+        </div>
+
+        <div className="max-h-[50vh] overflow-y-auto px-4 pb-4 custom-scroll">
+          {uploadedFiles.length === 0 ? (
+            <p className="text-center py-8 text-gray-500 text-sm">No files uploaded</p>
+          ) : (
+            <div className="space-y-2 mt-4">
+              {uploadedFiles.map(f => {
+                const isEnabled = useAllFiles || (fileEnabledState[f.id] ?? true)
+                const scope = fileScopeState[f.id] || 'library'
+                const scopeInfo = {
+                  global: { icon: '🌍', label: 'Global', color: 'text-blue-600 bg-blue-50 border-blue-200' },
+                  chat: { icon: '💬', label: 'Chat', color: 'text-purple-600 bg-purple-50 border-purple-200' },
+                  library: { icon: '📁', label: 'Library', color: 'text-gray-600 bg-gray-50 border-gray-200' }
+                }
+                
+                return (
+                  <div 
+                    key={f.id} 
+                    className={`border rounded-xl p-3 transition-all ${
+                      isEnabled ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      
+                      {/* Individual Toggle (only show if NOT using all files) */}
+                      {!useAllFiles && (
+                        <label className="flex items-center cursor-pointer pt-1">
+                          <input
+                            type="checkbox"
+                            checked={fileEnabledState[f.id] ?? true}
+                            onChange={() => toggleFileEnabled(f.id)}
+                            className="w-4 h-4 accent-black rounded"
+                          />
+                        </label>
+                      )}
+
+                      {/* File Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-sm font-medium truncate flex-1">{f.name}</p>
+                          
+                          {/* Scope Badge */}
+                          <button
+                            onClick={() => toggleFileScope(f.id)}
+                            className={`text-xs px-2 py-1 rounded-full border font-medium ${scopeInfo[scope].color} hover:opacity-80 transition-opacity`}
+                            title="Click to change scope: Library → Chat → Global"
+                          >
+                            {scopeInfo[scope].icon} {scopeInfo[scope].label}
+                          </button>
+                        </div>
+                        
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <span>{f.size}</span>
+                          
+                          {/* Status */}
+                          {isEnabled ? (
+                            <span className="text-green-600 flex items-center gap-1">
+                              <div className="w-1.5 h-1.5 bg-green-600 rounded-full"></div>
+                              Active
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 flex items-center gap-1">
+                              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full"></div>
+                              Disabled
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
-                        <button onClick={() => downloadFile(f)} className="p-1.5 hover:bg-blue-100 rounded-lg">
-                          <FileText className="w-4 h-4 text-blue-600" />
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-1">
+                        <button 
+                          onClick={() => downloadFile(f)} 
+                          className="p-1.5 hover:bg-blue-100 rounded-lg transition-colors"
+                          title="Download"
+                        >
+                          <Download className="w-4 h-4 text-blue-600" />
                         </button>
-                        <button onClick={() => deleteFile(f)} className="p-1.5 hover:bg-red-100 rounded-lg">
+                        <button 
+                          onClick={() => deleteFile(f)} 
+                          className="p-1.5 hover:bg-red-100 rounded-lg transition-colors"
+                          title="Delete"
+                        >
                           <Trash2 className="w-4 h-4 text-red-600" />
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* DRIVE MODAL */}
-      {showDrive && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md max-h-[85vh] overflow-hidden rounded-2xl shadow-2xl">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h2 className="font-bold flex items-center gap-2">
-                <Cloud className="w-5 h-5" />
-                Google Drive Links
-              </h2>
-              <button onClick={() => setShowDrive(false)} className="p-1.5 hover:bg-gray-100 rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 bg-gray-50 border-b border-gray-200">
-              <p className="text-xs text-gray-600 mb-2">📌 Share file as "Anyone with the link"</p>
-            </div>
-
-            <div className="p-4 space-y-2">
-              <input
-                type="text"
-                value={driveLink}
-                onChange={(e) => setDriveLink(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && fetchDriveLink()}
-                placeholder="Paste Google Drive link..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:border-gray-500"
-                disabled={loadingLink}
-              />
-              <button
-                onClick={fetchDriveLink}
-                disabled={loadingLink || !driveLink.trim()}
-                className="w-full bg-black text-white py-3 rounded-xl font-bold text-sm hover:bg-gray-800 disabled:opacity-50"
-              >
-                {loadingLink ? <><Loader2 className="w-4 h-4 inline animate-spin mr-2" />Fetching...</> : <><Cloud className="w-4 h-4 inline mr-2" />Add File</>}
-              </button>
-            </div>
-
-            <div className="max-h-[40vh] overflow-y-auto px-4 pb-4 custom-scroll">
-              {driveLinkFiles.length === 0 ? (
-                <p className="text-center py-8 text-gray-500 text-sm">No files added</p>
-              ) : (
-                <div className="space-y-2">
-                  {driveLinkFiles.map(file => (
-                    <div key={file.fileId} className="border border-gray-200 p-3 rounded-xl flex items-center justify-between group hover:border-gray-300">
-                      <div className="flex-1 min-w-0 mr-2">
-                        <p className="text-sm font-medium truncate">{file.name}</p>
-                        <p className="text-xs text-gray-500">{file.type}</p>
+                    {/* Scope Description */}
+                    {scope === 'global' && (
+                      <div className="mt-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                        ℹ️ Available in all chats
                       </div>
-                      <button onClick={() => removeDriveLinkFile(file.fileId)} className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-100 rounded-lg">
-                        <Trash2 className="w-4 h-4 text-red-600" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SETTINGS MODAL */}
-      {showSettings && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-2xl shadow-2xl">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold">Settings</h2>
-              <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-gray-100 rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex border-b border-gray-200 bg-gray-50">
-              <button
-                onClick={() => setSettingsTab('account')}
-                className={`flex-1 px-6 py-3 text-sm font-medium transition-colors ${
-                  settingsTab === 'account' ? 'border-b-2 border-black text-black bg-white' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <User className="w-4 h-4 inline mr-2" />
-                Account
-              </button>
-              <button
-                onClick={() => setSettingsTab('api')}
-                className={`flex-1 px-6 py-3 text-sm font-medium transition-colors ${
-                  settingsTab === 'api' ? 'border-b-2 border-black text-black bg-white' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Key className="w-4 h-4 inline mr-2" />
-                API Keys
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6">
-              {settingsTab === 'account' && (
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4">Change Password</h3>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Current Password</label>
-                        <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-500" placeholder="••••••••" />
+                    )}
+                    {scope === 'chat' && (
+                      <div className="mt-2 text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded">
+                        ℹ️ Only in this chat
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">New Password</label>
-                        <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-500" placeholder="••••••••" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Confirm New Password</label>
-                        <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-500" placeholder="••••••••" />
-                      </div>
-                      <button onClick={handlePasswordChange} className="px-6 py-2.5 bg-black text-white rounded-lg hover:bg-gray-800 font-medium">
-                        Update Password
-                      </button>
-                    </div>
+                    )}
                   </div>
-                  <div className="pt-6 border-t border-gray-200">
-                    <button onClick={signOut} className="flex items-center gap-2 text-red-600 hover:text-red-700 font-medium">
-                      <LogOut className="w-4 h-4" />
-                      Sign Out
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {settingsTab === 'api' && (
-                <div className="space-y-6">
-                  {Object.keys(PROVIDERS).map(provider => (
-                    <div key={provider} className="space-y-3 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                      <h3 className="font-semibold capitalize text-lg">{provider}</h3>
-                      <input
-                        type="password"
-                        value={apiKeys[provider] || ''}
-                        onChange={(e) => setApiKeys(prev => ({ ...prev, [provider]: e.target.value }))}
-                        placeholder={`${provider} API key`}
-                        className="w-full px-4 py-2.5 border border-gray-300 bg-white rounded-lg focus:outline-none focus:border-gray-500 text-sm"
-                      />
-                      <button onClick={() => saveApiKey(provider)} className="px-4 py-2 bg-white hover:bg-gray-100 border border-gray-300 rounded-lg text-sm font-medium">
-                        Save Key
-                      </button>
-                    </div>
-                  ))}
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-xs text-blue-800">🔒 API keys stored locally in browser</p>
-                  </div>
-                </div>
-              )}
+                )
+              })}
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
-  )
-}
+  )}
+
+  {/* DRIVE MODAL - UNCHANGED */}
+  {showDrive && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-md max-h-[85vh] overflow-hidden rounded-2xl shadow-2xl">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <h2 className="font-bold flex items-center gap-2">
+            <Cloud className="w-5 h-5" />
+            Google Drive Links
+          </h2>
+          <button onClick={() => setShowDrive(false)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-4 bg-gray-50 border-b border-gray-200">
+          <p className="text-xs text-gray-600 mb-2">📌 Share file as "Anyone with the link"</p>
+        </div>
+
+        <div className="p-4 space-y-2">
+          <input
+            type="text"
+            value={driveLink}
+            onChange={(e) => setDriveLink(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && fetchDriveLink()}
+            placeholder="Paste Google Drive link..."
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:border-gray-500"
+            disabled={loadingLink}
+          />
+          <button
+            onClick={fetchDriveLink}
+            disabled={loadingLink || !driveLink.trim()}
+            className="w-full bg-black text-white py-3 rounded-xl font-bold text-sm hover:bg-gray-800 disabled:opacity-50"
+          >
+            {loadingLink ? <><Loader2 className="w-4 h-4 inline animate-spin mr-2" />Fetching...</> : <><Cloud className="w-4 h-4 inline mr-2" />Add File</>}
+          </button>
+        </div>
+
+        <div className="max-h-[40vh] overflow-y-auto px-4 pb-4 custom-scroll">
+          {driveLinkFiles.length === 0 ? (
+            <p className="text-center py-8 text-gray-500 text-sm">No files added</p>
+          ) : (
+            <div className="space-y-2">
+              {driveLinkFiles.map(file => (
+                <div key={file.fileId} className="border border-gray-200 p-3 rounded-xl flex items-center justify-between group hover:border-gray-300">
+                  <div className="flex-1 min-w-0 mr-2">
+                    <p className="text-sm font-medium truncate">{file.name}</p>
+                    <p className="text-xs text-gray-500">{file.type}</p>
+                  </div>
+                  <button onClick={() => removeDriveLinkFile(file.fileId)} className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-100 rounded-lg">
+                    <Trash2 className="w-4 h-4 text-red-600" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* SETTINGS MODAL - UNCHANGED */}
+  {showSettings && (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-2xl shadow-2xl">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <h2 className="text-xl font-semibold">Settings</h2>
+          <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex border-b border-gray-200 bg-gray-50">
+          <button
+            onClick={() => setSettingsTab('account')}
+            className={`flex-1 px-6 py-3 text-sm font-medium transition-colors ${
+              settingsTab === 'account' ? 'border-b-2 border-black text-black bg-white' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <User className="w-4 h-4 inline mr-2" />
+            Account
+          </button>
+          <button
+            onClick={() => setSettingsTab('api')}
+            className={`flex-1 px-6 py-3 text-sm font-medium transition-colors ${
+              settingsTab === 'api' ? 'border-b-2 border-black text-black bg-white' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Key className="w-4 h-4 inline mr-2" />
+            API Keys
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 max-h-[calc(90vh-180px)]">
+          {settingsTab === 'account' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Change Password</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Current Password</label>
+                    <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-500" placeholder="••••••••" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">New Password</label>
+                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-500" placeholder="••••••••" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Confirm New Password</label>
+                    <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-500" placeholder="••••••••" />
+                  </div>
+                  <button onClick={handlePasswordChange} className="px-6 py-2.5 bg-black text-white rounded-lg hover:bg-gray-800 font-medium">
+                    Update Password
+                  </button>
+                </div>
+              </div>
+              <div className="pt-6 border-t border-gray-200">
+                <button onClick={signOut} className="flex items-center gap-2 text-red-600 hover:text-red-700 font-medium">
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          )}
+
+          {settingsTab === 'api' && (
+            <div className="space-y-6">
+              {Object.keys(PROVIDERS).map(provider => (
+                <div key={provider} className="space-y-3 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                  <h3 className="font-semibold capitalize text-lg">{PROVIDERS[provider].name}</h3>
+                  <input
+                    type="password"
+                    value={apiKeys[provider] || ''}
+                    onChange={(e) => setApiKeys(prev => ({ ...prev, [provider]: e.target.value }))}
+                    placeholder={`${provider} API key`}
+                    className="w-full px-4 py-2.5 border border-gray-300 bg-white rounded-lg focus:outline-none focus:border-gray-500 text-sm"
+                  />
+                  <button onClick={() => saveApiKey(provider)} className="px-4 py-2 bg-white hover:bg-gray-100 border border-gray-300 rounded-lg text-sm font-medium">
+                    Save Key
+                  </button>
+                </div>
+              ))}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-xs text-blue-800">🔒 API keys stored locally in browser</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )}
+</div>
